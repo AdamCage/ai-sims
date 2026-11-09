@@ -1,0 +1,7 @@
+.conversation.md
+.env
+
+# Local source references; keep the reproducible catalog.
+/.example/*
+!/.example/README.md
+!/.example/manifest.json

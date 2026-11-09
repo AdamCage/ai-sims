@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "checked_on": "2026-11-01",
+  "timezone": "Europe/Moscow",
+  "purpose": "Local source references for design research; no product dependency selected",
+  "repositories": [
+    {
+      "name": "MiroFish",
+      "path": ".example/MiroFish",
+      "upstream": "https://github.com/666ghj/MiroFish.git",
+      "branch_at_download": "main",
+      "commit": "7657031ac01184afe2cb220f5ee3545573b5e843",
+      "root_license": "AGPL-3.0",
+      "clone_depth": 1,
+      "clone_filter": "blob:none",
+      "code_executed": false
+    },
+    {
+      "name": "oasis",
+      "path": ".example/oasis",
+      "upstream": "https://github.com/camel-ai/oasis.git",
+      "branch_at_download": "main",
+      "commit": "ba892e0667eb84b312e4c0e5630f275154bbb98f",
+      "root_license": "Apache-2.0",
+      "clone_depth": 1,
+      "clone_filter": "blob:none",
+      "code_executed": false
+    },
+    {
+      "name": "ai-town",
+      "path": ".example/ai-town",
+      "upstream": "https://github.com/a16z-infra/ai-town.git",
+      "branch_at_download": "main",
+      "commit": "8e05997f2409275669c8344b84a51692e83f3f33",
+      "root_license": "MIT",
+      "clone_depth": 1,
+      "clone_filter": "blob:none",
+      "code_executed": false
+    },
+    {
+      "name": "generative_agents",
+      "path": ".example/generative_agents",
+      "upstream": "https://github.com/joonspk-research/generative_agents.git",
+      "branch_at_download": "main",
+      "commit": "fe05a71d3e4ed7d10bf68aa4eda6dd995ec070f4",
+      "root_license": "Apache-2.0; assets have separate terms",
+      "clone_depth": 1,
+      "clone_filter": "blob:none",
+      "code_executed": false
+    },
+    {
+      "name": "concordia",
+      "path": ".example/concordia",
+      "upstream": "https://github.com/google-deepmind/concordia.git",
+      "branch_at_download": "main",
+      "commit": "315e9d01535eda974acacbd1bd882dd2f2cfc6ee",
+      "root_license": "Apache-2.0",
+      "clone_depth": 1,
+      "clone_filter": "blob:none",
+      "code_executed": false
+    }
+  ]
+}

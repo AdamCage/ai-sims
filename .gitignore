@@ -1,6 +1,13 @@
 .conversation.md
 .env
 
+# Godot import/cache and local execution artifacts.
+.godot/
+*.tmp
+*.log
+/build/
+/test-output/
+
 # Local source references; keep the reproducible catalog.
 /.example/*
 !/.example/README.md

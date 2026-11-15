@@ -1,0 +1,420 @@
+{
+  "version": 1,
+  "models": {
+    "human_male": "res://assets/release/characters/human_male.glb",
+    "human_female": "res://assets/release/characters/human_female.glb",
+    "bed": "res://assets/release/props/bedSingle.glb",
+    "bunk": "res://assets/release/props/bedBunk.glb",
+    "hospital_bed": "res://assets/release/props/bedSingle.glb",
+    "table": "res://assets/release/props/table.glb",
+    "chair": "res://assets/release/props/chair.glb",
+    "shelf": "res://assets/release/props/bookcaseOpen.glb",
+    "locker": "res://assets/release/props/kitchenFridge.glb",
+    "cabinet": "res://assets/release/props/cabinetBed.glb",
+    "plant": "res://assets/release/props/pottedPlant.glb",
+    "desk": "res://assets/release/props/desk.glb",
+    "sofa": "res://assets/release/props/chairDesk.glb",
+    "computer": "res://assets/release/props/computerScreen.glb",
+    "lamp": "res://assets/release/props/lampRoundFloor.glb",
+    "sink": "res://assets/release/props/bathroomSink.glb",
+    "toilet": "res://assets/release/props/toilet.glb",
+    "crate": "res://assets/release/props/cardboardBoxClosed.glb"
+  },
+  "textures": {
+    "floor": {
+      "albedo": "res://assets/release/textures/floor_color.png",
+      "normal": "res://assets/release/textures/floor_normal.png",
+      "roughness": "res://assets/release/textures/floor_roughness.png"
+    },
+    "wall": {
+      "albedo": "res://assets/release/textures/wall_color.png",
+      "normal": "res://assets/release/textures/wall_normal.png",
+      "roughness": "res://assets/release/textures/wall_roughness.png"
+    },
+    "wood": {
+      "albedo": "res://assets/release/textures/wood_color.png",
+      "normal": "res://assets/release/textures/wood_normal.png",
+      "roughness": "res://assets/release/textures/wood_roughness.png"
+    },
+    "fabric": {
+      "albedo": "res://assets/release/textures/fabric_color.png",
+      "normal": "res://assets/release/textures/fabric_normal.png",
+      "roughness": "res://assets/release/textures/fabric_roughness.png"
+    },
+    "metal": {
+      "albedo": "res://assets/release/textures/metal_color.png",
+      "normal": "res://assets/release/textures/metal_normal.png",
+      "roughness": "res://assets/release/textures/metal_roughness.png"
+    },
+    "tile": {
+      "albedo": "res://assets/release/textures/tile_color.png",
+      "normal": "res://assets/release/textures/tile_normal.png",
+      "roughness": "res://assets/release/textures/tile_roughness.png"
+    }
+  },
+  "sources": [
+    {
+      "author": "Quaternius",
+      "url": "https://quaternius.com/packs/universalbasecharacters.html",
+      "license": "CC0-1.0"
+    },
+    {
+      "author": "Quaternius",
+      "url": "https://quaternius.com/packs/universalanimationlibrary.html",
+      "license": "CC0-1.0"
+    },
+    {
+      "author": "Kenney",
+      "url": "https://kenney.nl/assets/furniture-kit",
+      "mirror": "https://github.com/shorepine/kenney/tree/main/3d/furniture",
+      "license": "CC0-1.0"
+    },
+    {
+      "author": "AI Sims project",
+      "url": "tools/build_materials.py",
+      "license": "CC0-1.0"
+    }
+  ],
+  "files": [
+    {
+      "path": "assets/release/audio/click.wav",
+      "sha256": "d61d29f10c0e43198c3ce3025f900d63616f4fe330c17976d24d8f60f8beff77",
+      "bytes": 2468
+    },
+    {
+      "path": "assets/release/audio/door.wav",
+      "sha256": "fccf47961abe3b6bbdb34acf4ac4587baa980f8f1de00711fa9d115973658f00",
+      "bytes": 11068
+    },
+    {
+      "path": "assets/release/audio/impact.wav",
+      "sha256": "559c49c214e684994b0e1f0d355e3c2618677762e90f75386feee821aa422375",
+      "bytes": 6658
+    },
+    {
+      "path": "assets/release/audio/message.wav",
+      "sha256": "d763778802c4102574a7539c850f4c53a23dfc88f84483296a6b5601e7575d3c",
+      "bytes": 7982
+    },
+    {
+      "path": "assets/release/audio/step.wav",
+      "sha256": "8c6c0ffcc6cbc49e8873e123e5bb017c31d3a0b55c8653073efad9c041bcd377",
+      "bytes": 3130
+    },
+    {
+      "path": "assets/release/audio/success.wav",
+      "sha256": "1bfcc7961e97318de3066cf843db572997be73119434e55fa9601f78019732e5",
+      "bytes": 5776
+    },
+    {
+      "path": "assets/release/characters/human_female.glb",
+      "sha256": "717615f1dbc7bf23cb18ab726b29fb068f315ccf9623a21abd24edebb5ce1e39",
+      "bytes": 11250664
+    },
+    {
+      "path": "assets/release/characters/human_female_fabric_color.png",
+      "sha256": "2e2719b25e8f246db086119e87cd8a137e543b6bf7248c1f540f9101451d6893",
+      "bytes": 136874
+    },
+    {
+      "path": "assets/release/characters/human_female_T_Eye_Brown.png",
+      "sha256": "d08e3356a83211bc6ca21fe3a8e39f4b5c1a3b8f85457fc2c0fb57be09935025",
+      "bytes": 35958
+    },
+    {
+      "path": "assets/release/characters/human_female_T_Eye_Normal_png.png",
+      "sha256": "9ed61f7726a54fe346a78b9e5a18905d8e2b88f86235d97f53cd207a26f3f8c7",
+      "bytes": 15099
+    },
+    {
+      "path": "assets/release/characters/human_female_T_Hair_1_BaseColor.png",
+      "sha256": "9c75c03a1fc3fa20aa15178465aede57f6c38c9b1edd2d8cff30bac9876c00d2",
+      "bytes": 791659
+    },
+    {
+      "path": "assets/release/characters/human_female_T_Hair_1_Normal.png",
+      "sha256": "2e93fd0703ff4904202a35e1da291391ff6d8ea72b5b8658353231ba9385d001",
+      "bytes": 1466073
+    },
+    {
+      "path": "assets/release/characters/human_female_T_Hair_2_BaseColor.png",
+      "sha256": "c5ad58c809d00344a6f5d087f89b126f0b3faa18014f5389e9a2fcbfc4a7f995",
+      "bytes": 887523
+    },
+    {
+      "path": "assets/release/characters/human_female_T_Hair_2_Normal.png",
+      "sha256": "4ae904472517124b3f37f7f70c05060ee1057cbcce3d5a1fca036105d34ad1c8",
+      "bytes": 1660829
+    },
+    {
+      "path": "assets/release/characters/human_female_T_Superhero_Female_Dark_BaseColor.png",
+      "sha256": "ac5dca56d4fe8a50ced1844eeaaecd895dcc54a36ee90b2343bee23429cb5882",
+      "bytes": 620746
+    },
+    {
+      "path": "assets/release/characters/human_female_T_Superhero_Female_Normal.png",
+      "sha256": "ae18f708da0eeccdbd1556d04089d04e274fe71267a7c9f9dbda6d456cee6e6d",
+      "bytes": 1235828
+    },
+    {
+      "path": "assets/release/characters/human_female_T_Superhero_Female_Roughness.png",
+      "sha256": "0563dcadb5ee7e378124f49406329972b4efe4e0b459f49b3ce81893c8741022",
+      "bytes": 880803
+    },
+    {
+      "path": "assets/release/characters/human_male.glb",
+      "sha256": "43dc76e7ce3249112cf6b9553a174ddcabe9d12d7c965f37b271676f4261596a",
+      "bytes": 12421240
+    },
+    {
+      "path": "assets/release/characters/human_male_fabric_color.png",
+      "sha256": "2e2719b25e8f246db086119e87cd8a137e543b6bf7248c1f540f9101451d6893",
+      "bytes": 136874
+    },
+    {
+      "path": "assets/release/characters/human_male_T_Eye_Brown.png",
+      "sha256": "d08e3356a83211bc6ca21fe3a8e39f4b5c1a3b8f85457fc2c0fb57be09935025",
+      "bytes": 35958
+    },
+    {
+      "path": "assets/release/characters/human_male_T_Eye_Normal_png.png",
+      "sha256": "9ed61f7726a54fe346a78b9e5a18905d8e2b88f86235d97f53cd207a26f3f8c7",
+      "bytes": 15099
+    },
+    {
+      "path": "assets/release/characters/human_male_T_Hair_1_BaseColor.png",
+      "sha256": "9c75c03a1fc3fa20aa15178465aede57f6c38c9b1edd2d8cff30bac9876c00d2",
+      "bytes": 791659
+    },
+    {
+      "path": "assets/release/characters/human_male_T_Hair_1_Normal.png",
+      "sha256": "2e93fd0703ff4904202a35e1da291391ff6d8ea72b5b8658353231ba9385d001",
+      "bytes": 1466073
+    },
+    {
+      "path": "assets/release/characters/human_male_T_Hair_1_Normal_png.png",
+      "sha256": "2e93fd0703ff4904202a35e1da291391ff6d8ea72b5b8658353231ba9385d001",
+      "bytes": 1466073
+    },
+    {
+      "path": "assets/release/characters/human_male_T_Hair_2_BaseColor.png",
+      "sha256": "c5ad58c809d00344a6f5d087f89b126f0b3faa18014f5389e9a2fcbfc4a7f995",
+      "bytes": 887523
+    },
+    {
+      "path": "assets/release/characters/human_male_T_Hair_2_Normal.png",
+      "sha256": "4ae904472517124b3f37f7f70c05060ee1057cbcce3d5a1fca036105d34ad1c8",
+      "bytes": 1660829
+    },
+    {
+      "path": "assets/release/characters/human_male_T_Superhero_Male_Dark.png",
+      "sha256": "73c01ede5f4545fdd92002c932522e57544a3f4c26b58f48ea9b7ff6b94aee17",
+      "bytes": 650528
+    },
+    {
+      "path": "assets/release/characters/human_male_T_Superhero_Male_Normal.png",
+      "sha256": "10c4aa2c23ed8002526e299f89dd4fe76bdfa3a7bc45f9bd0af7c7358cea0e90",
+      "bytes": 1401369
+    },
+    {
+      "path": "assets/release/characters/human_male_T_Superhero_Male_Roughness.png",
+      "sha256": "08645de7b37e038ca3c01939a987dcc2cee9f3c0424b3a6c58b8c6d20205b968",
+      "bytes": 846264
+    },
+    {
+      "path": "assets/release/props/bathroomSink.glb",
+      "sha256": "39d4f19608cab7e0fed52303b2c689f5f51fae1bad9b6913cb53d838875e797e",
+      "bytes": 22536
+    },
+    {
+      "path": "assets/release/props/bedBunk.glb",
+      "sha256": "a3eccbc4a04340dd84878d959e15eede76f517fb8d4de6862ca46877c88d764e",
+      "bytes": 40784
+    },
+    {
+      "path": "assets/release/props/bedSingle.glb",
+      "sha256": "ca00c63f9a12da3138d902b2f5f18e0360fb6e8a5ac42ccb4bc3f185724b65d1",
+      "bytes": 18636
+    },
+    {
+      "path": "assets/release/props/bookcaseOpen.glb",
+      "sha256": "750702218d68c062b15dfef6ab06a4014d1cfa8bd05f02e57c53b7e13bec157c",
+      "bytes": 18020
+    },
+    {
+      "path": "assets/release/props/cabinetBed.glb",
+      "sha256": "b651fafb9e2c8e4adcb8cad3d10dc94404b46fe039b26e66b2c9020df4e5301d",
+      "bytes": 7496
+    },
+    {
+      "path": "assets/release/props/cardboardBoxClosed.glb",
+      "sha256": "4af079dca52960912764574950f0549ff2ae1224b3db1528718629473a2d5d81",
+      "bytes": 5400
+    },
+    {
+      "path": "assets/release/props/chair.glb",
+      "sha256": "c8a11eec93e89e31250ba91afc1b8d56c3bec7ae86640fd1239f595ff4180883",
+      "bytes": 10756
+    },
+    {
+      "path": "assets/release/props/chairDesk.glb",
+      "sha256": "46406619186034cbe92b19b79a5f1a8e3f442a17a70a7524ef2c0ad0f35095c6",
+      "bytes": 39016
+    },
+    {
+      "path": "assets/release/props/computerKeyboard.glb",
+      "sha256": "9d9135789de2120e9f41ce3f0a56dd1b15f40adcc7888739bb842a2d820da322",
+      "bytes": 3476
+    },
+    {
+      "path": "assets/release/props/computerScreen.glb",
+      "sha256": "5942cbad29a2d2b956619569926e81d50a4174403d592fece6556e57632dc643",
+      "bytes": 6404
+    },
+    {
+      "path": "assets/release/props/desk.glb",
+      "sha256": "0164fe828f028b321730fb8c74502e353583f751be74da1682d42fff7d3c5a42",
+      "bytes": 15048
+    },
+    {
+      "path": "assets/release/props/kitchenFridge.glb",
+      "sha256": "8af4f4bbb1b5525ad8226e97926a5af60fa8fb20a3cb74dbda5328a9d320dbab",
+      "bytes": 20116
+    },
+    {
+      "path": "assets/release/props/lampRoundFloor.glb",
+      "sha256": "50fe1b5b588edf15bfa9cc880f71a02a4fda6036350b24733d0ef4de5cc5e908",
+      "bytes": 6600
+    },
+    {
+      "path": "assets/release/props/lampSquareTable.glb",
+      "sha256": "70ec9211af336b1ef3b4da32590b8737b4facf219348c22e6533a1e898cdb13d",
+      "bytes": 5624
+    },
+    {
+      "path": "assets/release/props/pottedPlant.glb",
+      "sha256": "5b760eda2766f75fda36b2c5df652a1662f82981ef64cd8fa7fe7bcd386b3a15",
+      "bytes": 7576
+    },
+    {
+      "path": "assets/release/props/rugRectangle.glb",
+      "sha256": "a989d2d59c04e3071e0c90388b113a9a8f339ce1814ef984c51cb6dcd7c8e0eb",
+      "bytes": 3188
+    },
+    {
+      "path": "assets/release/props/table.glb",
+      "sha256": "ff1a94498d023957f4bc3ff6f55a7a82977d336dbf01a573b3364f03afe5ff61",
+      "bytes": 8196
+    },
+    {
+      "path": "assets/release/props/tableRound.glb",
+      "sha256": "f8daea9124a542a00b7bdacfddac82dc468573d43e44d7b54dd6316e9695754b",
+      "bytes": 6444
+    },
+    {
+      "path": "assets/release/props/televisionModern.glb",
+      "sha256": "d89519ad0a5f28b5b0dccb0d83209dccf610cda959578238dd21bbf9e219cfc6",
+      "bytes": 6368
+    },
+    {
+      "path": "assets/release/props/toilet.glb",
+      "sha256": "16165cfd03c56c2cb443b800570810a22ef770f65e7a468f6761d9dc14eaaeae",
+      "bytes": 18112
+    },
+    {
+      "path": "assets/release/props/trashcan.glb",
+      "sha256": "e0ccc1fe50cbd05386477fdff527171d1cf7c0de2ba7ff3233f8d9561feb2561",
+      "bytes": 6452
+    },
+    {
+      "path": "assets/release/textures/fabric_color.png",
+      "sha256": "2e2719b25e8f246db086119e87cd8a137e543b6bf7248c1f540f9101451d6893",
+      "bytes": 136874
+    },
+    {
+      "path": "assets/release/textures/fabric_normal.png",
+      "sha256": "acf243e14a04de994e383d666837238c8a66e5c47243418a6c9dda31a35672ad",
+      "bytes": 5599
+    },
+    {
+      "path": "assets/release/textures/fabric_roughness.png",
+      "sha256": "dfd00931676ca067a788dc923a9da9465746617be208867e673406bfb80ec6d1",
+      "bytes": 1488
+    },
+    {
+      "path": "assets/release/textures/floor_color.png",
+      "sha256": "5df37205701070f0bdbaee6731d3b45895f06e8ca33993472cba5566c5ee7a73",
+      "bytes": 134371
+    },
+    {
+      "path": "assets/release/textures/floor_normal.png",
+      "sha256": "6ce727425f350b6ae7fa8e3364b107c23fd42f152aa48f0ea1b9dc2822b363e4",
+      "bytes": 17028
+    },
+    {
+      "path": "assets/release/textures/floor_roughness.png",
+      "sha256": "dfd00931676ca067a788dc923a9da9465746617be208867e673406bfb80ec6d1",
+      "bytes": 1488
+    },
+    {
+      "path": "assets/release/textures/metal_color.png",
+      "sha256": "b01bf6d8bb8b95fca51571959a872a1eb2a85387f0cffd13e20cc6b4466ed064",
+      "bytes": 101652
+    },
+    {
+      "path": "assets/release/textures/metal_normal.png",
+      "sha256": "b28d57c7df4000daefd7131ccb830d65c7228acfafd204ec1e9a6b8f7cf5ab96",
+      "bytes": 2655
+    },
+    {
+      "path": "assets/release/textures/metal_roughness.png",
+      "sha256": "f8633a5c569d8da2d055a74185c44c6ac72ee67a4c520d7ba35330c0865db0ed",
+      "bytes": 1487
+    },
+    {
+      "path": "assets/release/textures/tile_color.png",
+      "sha256": "7db57b465925c89ef2ad8d78565e69597c15226d767011b123e04863fef8baed",
+      "bytes": 88101
+    },
+    {
+      "path": "assets/release/textures/tile_normal.png",
+      "sha256": "1227c4e97c914f1d5ee1076d002e83b9d27c18ee6de5a8f2c48905e90f50fbd7",
+      "bytes": 1493
+    },
+    {
+      "path": "assets/release/textures/tile_roughness.png",
+      "sha256": "dfd00931676ca067a788dc923a9da9465746617be208867e673406bfb80ec6d1",
+      "bytes": 1488
+    },
+    {
+      "path": "assets/release/textures/wall_color.png",
+      "sha256": "b96dab01fac82c43892298ac949c5a0819bae87a0ac7fe60ac0389bb3b83dce8",
+      "bytes": 115939
+    },
+    {
+      "path": "assets/release/textures/wall_normal.png",
+      "sha256": "22bbed10f617550dbd5c448dc2c96b2f48b80586f0e3bd7095a7c9aaf47c7e46",
+      "bytes": 148351
+    },
+    {
+      "path": "assets/release/textures/wall_roughness.png",
+      "sha256": "dfd00931676ca067a788dc923a9da9465746617be208867e673406bfb80ec6d1",
+      "bytes": 1488
+    },
+    {
+      "path": "assets/release/textures/wood_color.png",
+      "sha256": "7f4d59d0656d8ec20b842b633a5c71aa7dfb92fe341a92f065bfb35e2080da98",
+      "bytes": 176725
+    },
+    {
+      "path": "assets/release/textures/wood_normal.png",
+      "sha256": "bc4c6dacb56c66e369801f1b7b091bb169830f4dc85eaec5ff0d8c1d85a928ad",
+      "bytes": 4523
+    },
+    {
+      "path": "assets/release/textures/wood_roughness.png",
+      "sha256": "dfd00931676ca067a788dc923a9da9465746617be208867e673406bfb80ec6d1",
+      "bytes": 1488
+    }
+  ]
+}

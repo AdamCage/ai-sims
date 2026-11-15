@@ -3,7 +3,10 @@ param(
     [switch]$Tests,
     [switch]$Smoke,
     [switch]$AutoRun,
-    [ValidateSet('closed_block', 'last_ration')][string]$Scenario = 'closed_block'
+    [ValidateSet('closed_block','residence','research_station')][string]$Map = 'closed_block',
+    [ValidateSet('sandbox','scarcity','last_ration','deception')][string]$Scenario = 'scarcity',
+    [ValidateRange(3,20)][int]$Agents = 7,
+    [switch]$LegacyTests
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -19,10 +22,11 @@ if (-not $Godot -or -not (Test-Path -LiteralPath $Godot)) {
     throw 'Set GODOT_BIN to a Godot 4.7.2 executable, put godot on PATH, or pass -Godot <absolute path>.'
 }
 $engineArguments = @('--path', $projectRoot)
-if ($Tests) { $engineArguments += @('--headless', '--script', 'res://tests/run_tests.gd') }
-elseif ($Smoke) { $engineArguments += @('--script', 'res://tests/render_smoke.gd') }
+if ($LegacyTests) { $engineArguments += @('--headless', '--script', 'res://tests/run_tests.gd') }
+elseif ($Tests) { $engineArguments += @('--headless', '--script', 'res://tests/run_release_tests.gd','--','--test-profile') }
+elseif ($Smoke) { $engineArguments += @('--script', 'res://tests/release_ui_qa.gd','--','--test-profile') }
 else {
-    $engineArguments += @('--', "--scenario=$Scenario")
+    $engineArguments += @('--', "--scenario=$Scenario", "--map=$Map", "--agents=$Agents")
     if ($AutoRun) { $engineArguments += '--auto-run' }
 }
 & $Godot @engineArguments

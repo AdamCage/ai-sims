@@ -1,0 +1,910 @@
+{
+	"complete": true,
+	"decisions": [
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.0374809692114,
+				"completion_tokens": 11.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 2083.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"target": "v0",
+				"type": "move_to"
+			},
+			"run_id": 3,
+			"stage": "perceive_approach_take_consume",
+			"tick": 0
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.0449172498918,
+				"completion_tokens": 11.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 2505.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"target": "v0",
+				"type": "move_to"
+			},
+			"run_id": 3,
+			"stage": "perceive_approach_take_consume",
+			"tick": 1
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.0491111712234,
+				"completion_tokens": 10.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 2747.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"target": "v0",
+				"type": "take"
+			},
+			"run_id": 3,
+			"stage": "perceive_approach_take_consume",
+			"tick": 2
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.0529350406728,
+				"completion_tokens": 10.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 2964.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"slot": 2.0,
+				"type": "consume"
+			},
+			"run_id": 3,
+			"stage": "perceive_approach_take_consume",
+			"tick": 3
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.0587325201606,
+				"completion_tokens": 44.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 3157.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"text": "Я лично видела перед собой паёк на полу, взяла его и съела — голод уменьшился. Это подтверждено результатом действия.",
+				"type": "speak"
+			},
+			"run_id": 3,
+			"stage": "communicate_personal_observation",
+			"tick": 4
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.0598426758072,
+				"completion_tokens": 11.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 3352.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"digital": true,
+				"type": "take_photo"
+			},
+			"run_id": 3,
+			"stage": "take_genuine_photo",
+			"tick": 5
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.0605475365352,
+				"completion_tokens": 15.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 3376.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"app": "gallery",
+				"slot": 0.0,
+				"type": "use_device"
+			},
+			"run_id": 3,
+			"stage": "view_exact_photo",
+			"tick": 6
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.05631132355992,
+				"completion_tokens": 15.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 4390.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"index": 0.0,
+				"slot": 0.0,
+				"type": "view_photo"
+			},
+			"run_id": 3,
+			"stage": "view_exact_photo",
+			"tick": 7
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.0847418810238,
+				"completion_tokens": 14.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 4753.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"app": "messages",
+				"slot": 0.0,
+				"type": "use_device"
+			},
+			"run_id": 3,
+			"stage": "send_private_message",
+			"tick": 8
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.100706976513,
+				"completion_tokens": 65.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 5455.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"contact": "c0",
+				"text": "Привет, Борис! Хочу поделиться личным опытом: я поела — паёк уменьшил голод с 65 до 25. Чувствую себя бодрее и спокойнее.",
+				"type": "send_message"
+			},
+			"run_id": 3,
+			"stage": "send_private_message",
+			"tick": 9
+		},
+		{
+			"actor": "person_01",
+			"diagnostic": {
+				"actual_rub": 0.0414458108064,
+				"completion_tokens": 14.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 2296.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"app": "messages",
+				"slot": 0.0,
+				"type": "use_device"
+			},
+			"run_id": 3,
+			"stage": "read_private_message",
+			"tick": 10
+		},
+		{
+			"actor": "person_01",
+			"diagnostic": {
+				"actual_rub": 0.06079423779,
+				"completion_tokens": 11.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 3406.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"message": "m0",
+				"type": "read_message"
+			},
+			"run_id": 3,
+			"stage": "read_private_message",
+			"tick": 11
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.0381329653848,
+				"completion_tokens": 14.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 2108.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"app": "messages",
+				"slot": 0.0,
+				"type": "use_device"
+			},
+			"run_id": 4,
+			"stage": "read_altered_notice",
+			"tick": 0
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.0567589101222,
+				"completion_tokens": 11.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 3177.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"message": "m0",
+				"type": "read_message"
+			},
+			"run_id": 4,
+			"stage": "read_altered_notice",
+			"tick": 1
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.0649705376034,
+				"completion_tokens": 10.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 3647.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"slot": 0.0,
+				"type": "return_device"
+			},
+			"run_id": 4,
+			"stage": "verify_notice_at_terminal",
+			"tick": 2
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.0633317364108,
+				"completion_tokens": 11.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 3550.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"target": "v0",
+				"type": "move_to"
+			},
+			"run_id": 4,
+			"stage": "verify_notice_at_terminal",
+			"tick": 3
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.0638251389204,
+				"completion_tokens": 10.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 3582.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"degrees": -90.0,
+				"type": "turn"
+			},
+			"run_id": 4,
+			"stage": "verify_notice_at_terminal",
+			"tick": 4
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.068900136162,
+				"completion_tokens": 10.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 3870.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"degrees": -90.0,
+				"type": "turn"
+			},
+			"run_id": 4,
+			"stage": "verify_notice_at_terminal",
+			"tick": 5
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.039083822506872,
+				"completion_tokens": 9.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 4189.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"degrees": 90.0,
+				"type": "turn"
+			},
+			"run_id": 4,
+			"stage": "verify_notice_at_terminal",
+			"tick": 6
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.0795435331548,
+				"completion_tokens": 9.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 4478.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"degrees": 90.0,
+				"type": "turn"
+			},
+			"run_id": 4,
+			"stage": "verify_notice_at_terminal",
+			"tick": 7
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.049515761281272,
+				"completion_tokens": 5.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 4797.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"type": "look"
+			},
+			"run_id": 4,
+			"stage": "verify_notice_at_terminal",
+			"tick": 8
+		},
+		{
+			"actor": "person_00",
+			"diagnostic": {
+				"actual_rub": 0.0905217389934,
+				"completion_tokens": 11.0,
+				"cost_source": "RouterAI_generation_receipt",
+				"currency": "RUB",
+				"error": "",
+				"mode": "real_vlm",
+				"ok": true,
+				"prompt_tokens": 5093.0,
+				"provider_name": "",
+				"quoted_provider": "byteplus",
+				"requested_model": "~deepseek/deepseek-v4-flash-latest",
+				"returned_model": "deepseek/deepseek-v4.1-flash-1017",
+				"role": "action"
+			},
+			"intention": {
+				"target": "v0",
+				"type": "move_to"
+			},
+			"run_id": 4,
+			"stage": "verify_notice_at_terminal",
+			"tick": 9
+		}
+	],
+	"failures": [
+		"Goal-following fixture did not complete: verify_notice_at_terminal"
+	],
+	"fixture_setup": [
+		{
+			"details": {
+				"actor_position": [
+					-4.0,
+					-3.0
+				],
+				"fixture_item": "item_1001",
+				"food_position": [
+					-2.30294370651245,
+					-1.30294370651245
+				],
+				"heading": -135.0,
+				"note": "Positions, need and acquaintance are authored fixture setup, never credited as AI actions.",
+				"witness_position": [
+					-5.13137102127075,
+					-1.86862909793854
+				]
+			},
+			"name": "food_and_awake_witness"
+		},
+		{
+			"details": {
+				"actor_position": [
+					-6.33020162582397,
+					-6.07763004302979
+				],
+				"heading": 15.0000015065624,
+				"note": "Scenario supplies an altered message; pose beside terminal is operator fixture setup.",
+				"terminal_position": [
+					-6.66666650772095,
+					-7.33333349227905
+				]
+			},
+			"name": "altered_notice_and_nearby_terminal"
+		},
+		{
+			"details": {
+				"advanced_game_minutes": 65.0,
+				"note": "Explicit time-aging fixture; no generated action is implied."
+			},
+			"name": "age_own_experience_for_memory_role"
+		}
+	],
+	"initial_ledger": {
+		"active_requests": 0,
+		"limit_rub": 1000.0,
+		"over_budget": false,
+		"remaining_rub": 509.504214,
+		"request_count": 2050,
+		"reserved_rub": 0.0,
+		"spent_rub": 469.325011,
+		"storage_error": "",
+		"unknown_rub": 21.170775
+	},
+	"kind": "real_vlm_explicit_goal_following_fixtures",
+	"ledger": {
+		"active_requests": 0,
+		"limit_rub": 1000.0,
+		"over_budget": false,
+		"remaining_rub": 508.030737,
+		"request_count": 2073,
+		"reserved_rub": 0.0,
+		"spent_rub": 470.798488,
+		"storage_error": "",
+		"unknown_rub": 21.170775
+	},
+	"model": "~deepseek/deepseek-v4-flash-latest",
+	"model_consumed_items": [
+		"item_1001"
+	],
+	"network_time_is_frozen": true,
+	"passed": false,
+	"provider": [
+		"byteplus"
+	],
+	"requests_this_run": 23,
+	"stages": [
+		{
+			"actor": "person_00",
+			"facts": [
+				{
+					"message": "Начат маршрут по доступному пространству.",
+					"minute": 0.0,
+					"ok": true,
+					"type": "move_to"
+				},
+				{
+					"message": "Достигнута цель маршрута.",
+					"minute": 1.0,
+					"ok": true,
+					"type": "plan_completed"
+				},
+				{
+					"message": "Вы уже рядом с целью. Перемещение не выполняет взаимодействие: выберите отдельное действие.",
+					"minute": 1.0,
+					"ok": false,
+					"type": "move_to"
+				},
+				{
+					"message": "Взято: Паёк",
+					"minute": 2.0,
+					"ok": true,
+					"type": "take"
+				},
+				{
+					"message": "Потреблён реальный запас; голод уменьшился.",
+					"minute": 3.0,
+					"ok": true,
+					"type": "consume"
+				},
+				{
+					"message": "Действие завершено: consume",
+					"minute": 4.0,
+					"ok": true,
+					"type": "plan_completed"
+				}
+			],
+			"model_requests": 4,
+			"name": "perceive_approach_take_consume",
+			"passed": true,
+			"wall_seconds": 16.71,
+			"world_steps": 4
+		},
+		{
+			"actor": "person_00",
+			"facts": [
+				{
+					"message": "Произнесено сообщение вслух.",
+					"minute": 4.0,
+					"ok": true,
+					"type": "speak"
+				}
+			],
+			"model_requests": 1,
+			"name": "communicate_personal_observation",
+			"passed": true,
+			"wall_seconds": 3.976,
+			"world_steps": 1
+		},
+		{
+			"actor": "person_00",
+			"facts": [
+				{
+					"message": "Запрошена настоящая съёмка в конце текущего шага.",
+					"minute": 5.0,
+					"ok": true,
+					"type": "take_photo"
+				},
+				{
+					"message": "Зафиксирован момент настоящей съёмки.",
+					"minute": 6.0,
+					"ok": true,
+					"type": "photo_capture"
+				},
+				{
+					"message": "К фотографии прикреплены исходные пиксели реального кадра.",
+					"minute": 6.0,
+					"ok": true,
+					"type": "photo_attached"
+				}
+			],
+			"model_requests": 1,
+			"name": "take_genuine_photo",
+			"passed": true,
+			"wall_seconds": 4.777,
+			"world_steps": 1
+		},
+		{
+			"actor": "person_00",
+			"facts": [
+				{
+					"message": "Открыто приложение: gallery",
+					"minute": 6.0,
+					"ok": true,
+					"type": "use_device"
+				},
+				{
+					"message": "Рассмотрена фотография как новый личный опыт.",
+					"minute": 7.0,
+					"ok": true,
+					"type": "view_photo"
+				}
+			],
+			"model_requests": 2,
+			"name": "view_exact_photo",
+			"passed": true,
+			"wall_seconds": 8.71,
+			"world_steps": 2
+		},
+		{
+			"actor": "person_00",
+			"facts": [
+				{
+					"message": "Открыто приложение: messages",
+					"minute": 8.0,
+					"ok": true,
+					"type": "use_device"
+				},
+				{
+					"message": "Сообщение поставлено в очередь для1 получателей.",
+					"minute": 9.0,
+					"ok": true,
+					"type": "send_message"
+				},
+				{
+					"message": "Сообщение доставлено, но ещё не прочитано.",
+					"minute": 10.0,
+					"ok": true,
+					"type": "message_delivered"
+				}
+			],
+			"model_requests": 2,
+			"name": "send_private_message",
+			"passed": true,
+			"wall_seconds": 9.652,
+			"world_steps": 2
+		},
+		{
+			"actor": "person_01",
+			"facts": [
+				{
+					"message": "Открыто приложение: messages",
+					"minute": 10.0,
+					"ok": true,
+					"type": "use_device"
+				},
+				{
+					"message": "Прочитана доставленная версия сообщения.",
+					"minute": 11.0,
+					"ok": true,
+					"type": "read_message"
+				}
+			],
+			"model_requests": 2,
+			"name": "read_private_message",
+			"passed": true,
+			"wall_seconds": 7.397,
+			"world_steps": 2
+		},
+		{
+			"actor": "person_00",
+			"facts": [
+				{
+					"message": "Открыто приложение: messages",
+					"minute": 0.0,
+					"ok": true,
+					"type": "use_device"
+				},
+				{
+					"message": "Прочитана доставленная версия сообщения.",
+					"minute": 1.0,
+					"ok": true,
+					"type": "read_message"
+				}
+			],
+			"model_requests": 2,
+			"name": "read_altered_notice",
+			"passed": true,
+			"wall_seconds": 7.109,
+			"world_steps": 2
+		},
+		{
+			"actor": "person_00",
+			"facts": [
+				{
+					"message": "Нет выданного общего устройства в этом слоте.",
+					"minute": 2.0,
+					"ok": false,
+					"type": "return_device"
+				},
+				{
+					"message": "Начат маршрут по доступному пространству.",
+					"minute": 3.0,
+					"ok": true,
+					"type": "move_to"
+				},
+				{
+					"message": "Достигнута цель маршрута.",
+					"minute": 4.0,
+					"ok": true,
+					"type": "plan_completed"
+				},
+				{
+					"message": "Повернулся на -90°.",
+					"minute": 4.0,
+					"ok": true,
+					"type": "turn"
+				},
+				{
+					"message": "Повернулся на -90°.",
+					"minute": 5.0,
+					"ok": true,
+					"type": "turn"
+				},
+				{
+					"message": "Повернулся на 90°.",
+					"minute": 6.0,
+					"ok": true,
+					"type": "turn"
+				},
+				{
+					"message": "Повернулся на 90°.",
+					"minute": 7.0,
+					"ok": true,
+					"type": "turn"
+				},
+				{
+					"message": "Личный осмотр.",
+					"minute": 8.0,
+					"ok": true,
+					"type": "look"
+				},
+				{
+					"message": "Начат маршрут по доступному пространству.",
+					"minute": 9.0,
+					"ok": true,
+					"type": "move_to"
+				},
+				{
+					"message": "Достигнута цель маршрута.",
+					"minute": 10.0,
+					"ok": true,
+					"type": "plan_completed"
+				}
+			],
+			"model_requests": 8,
+			"name": "verify_notice_at_terminal",
+			"passed": false,
+			"wall_seconds": 33.651,
+			"world_steps": 8
+		},
+		{
+			"actor": "person_00",
+			"after_version": 1,
+			"before_version": 0,
+			"error": "",
+			"foundation_unchanged": true,
+			"model_requests": 1,
+			"name": "separate_real_memory_role",
+			"passed": true,
+			"protected_fresh_record_unchanged": true,
+			"real_memory_version": true
+		}
+	],
+	"started_utc": "2026-11-15T12:51:07",
+	"wall_seconds": 103.431
+}

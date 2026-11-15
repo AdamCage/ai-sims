@@ -1,0 +1,19 @@
+{
+  "archive": "AI-Sims-Windows-x64.zip",
+  "archive_sha256": "dc9569cc5348f26e345c44687b73a89e3c6efef99f47b362b35282d3982351f6",
+  "verified_utc": "2026-11-15T13:16:47.6064967Z",
+  "version": "0.2.0",
+  "archive_integrity": "passed",
+  "pck_format": 4,
+  "pck_entries": 200,
+  "manifest_resource_references": 36,
+  "packed_credential_helper": "passed",
+  "startup": "passed",
+  "renderer_smoke": true,
+  "test_profile": true,
+  "offline_tests": "passed",
+  "png_encoder_tests": "passed",
+  "live_ai": "not_run",
+  "target_hardware_performance": "not_run",
+  "extraction_directory": "C:\\projects\\ai-sims\\build\\verification-4b5abb24a0cd4c09a6d9954c95e489ee"
+}

@@ -1,0 +1,1 @@
+Tileable texture maps, sound effects, clothing assembly and credential bridge created for AI Sims, 2026. Source generators are included under tools/. These original art assets are dedicated under CC0 1.0. Code remains governed by the repository owner.

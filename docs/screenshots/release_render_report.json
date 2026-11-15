@@ -1,0 +1,260 @@
+{
+	"checks": 113,
+	"failures": [],
+	"godot": "4.7.2-stable (official)",
+	"gpu": "NVIDIA GeForce RTX 4080 SUPER",
+	"kind": "release_real_pixels_and_performance",
+	"maps": [
+		{
+			"agents": 20,
+			"always_active_eye_viewports": 1,
+			"camera_size": [
+				640,
+				360
+			],
+			"distinct_camera_hashes": 20,
+			"map": "closed_block",
+			"occlusion_fixture": {
+				"baseline_hash": "9e7737fc906aaf9637b98678d1f5882280db4fece33285bb9cfd2c2369c90950",
+				"eye": [
+					-7.26666641235352,
+					-10.3083333969116
+				],
+				"heading": -90.0,
+				"hidden": [
+					-4.06666660308838,
+					-10.3083333969116
+				],
+				"tall_avatar_food_uv": [
+					0.5,
+					0.935
+				],
+				"visible": [
+					-6.46666641235352,
+					-10.3083333969116
+				],
+				"visible_removed_hash": "11c8ccc66644ac314ac8198eedbc5fa2af8866ab61da88337201777d58977a67",
+				"wall": "partition_4"
+			}
+		},
+		{
+			"agents": 20,
+			"always_active_eye_viewports": 1,
+			"camera_size": [
+				640,
+				360
+			],
+			"distinct_camera_hashes": 20,
+			"map": "residence",
+			"occlusion_fixture": {
+				"baseline_hash": "99fa4965a1a22b50f05f2e9bad6af0c0b1405bbf3e4f711fb5b50ba66218afe8",
+				"eye": [
+					-18.5500011444092,
+					-6.40000009536743
+				],
+				"heading": -180.0,
+				"hidden": [
+					-18.5500011444092,
+					-3.20000028610229
+				],
+				"tall_avatar_food_uv": [
+					0.5,
+					0.935
+				],
+				"visible": [
+					-18.5500011444092,
+					-5.60000009536743
+				],
+				"visible_removed_hash": "a2e98d8dffdb651c73937637e1e29a04f646f760a00d9e756f3d969ea0b82539",
+				"wall": "wall_4"
+			}
+		},
+		{
+			"agents": 20,
+			"always_active_eye_viewports": 1,
+			"camera_size": [
+				640,
+				360
+			],
+			"distinct_camera_hashes": 20,
+			"map": "research_station",
+			"occlusion_fixture": {
+				"baseline_hash": "d186863342a9b65de6584e5ad446de90906bbc854e62d77c76652f7e44d504e9",
+				"eye": [
+					-4.80000019073486,
+					-15.4499998092651
+				],
+				"heading": -90.0,
+				"hidden": [
+					-1.60000002384186,
+					-15.4499998092651
+				],
+				"tall_avatar_food_uv": [
+					0.5,
+					0.935
+				],
+				"visible": [
+					-4.00000019073486,
+					-15.4499998092651
+				],
+				"visible_removed_hash": "212a8c9005c2a3e9c9af76d58cbabb070e2ae37ed3c3b42737e3fa33f5880020",
+				"wall": "wall_4"
+			}
+		}
+	],
+	"paid_api_calls": 0,
+	"performance": [
+		{
+			"agents": 20,
+			"average_fps": 258.272756272611,
+			"background_paid_acceptance_contention": true,
+			"frames": 2067,
+			"frames_over_16_67ms_percent": 0.0,
+			"logical_minute_at_end": 0.0,
+			"map": "closed_block",
+			"max_fps": 0,
+			"median_frame_ms": 3.444,
+			"mode": "paused_presentation_with_animations",
+			"observer_pixels": [
+				1920,
+				1080
+			],
+			"p95_frame_ms": 6.381,
+			"p99_frame_ms": 7.276,
+			"quality": "medium",
+			"root_pixels": [
+				1920,
+				1080
+			],
+			"vsync": "disabled",
+			"wall_seconds": 8.003167
+		},
+		{
+			"agents": 20,
+			"average_fps": 232.301737839429,
+			"background_paid_acceptance_contention": true,
+			"frames": 1859,
+			"frames_over_16_67ms_percent": 0.753093060785369,
+			"logical_minute_at_end": 3.2,
+			"map": "closed_block",
+			"max_fps": 0,
+			"median_frame_ms": 3.476,
+			"mode": "offline_demo_running",
+			"observer_pixels": [
+				1920,
+				1080
+			],
+			"p95_frame_ms": 8.852,
+			"p99_frame_ms": 16.498,
+			"quality": "medium",
+			"root_pixels": [
+				1920,
+				1080
+			],
+			"vsync": "disabled",
+			"wall_seconds": 8.002523
+		},
+		{
+			"agents": 20,
+			"average_fps": 257.043228123053,
+			"background_paid_acceptance_contention": true,
+			"frames": 2057,
+			"frames_over_16_67ms_percent": 0.0,
+			"logical_minute_at_end": 0.0,
+			"map": "residence",
+			"max_fps": 0,
+			"median_frame_ms": 3.535,
+			"mode": "paused_presentation_with_animations",
+			"observer_pixels": [
+				1920,
+				1080
+			],
+			"p95_frame_ms": 6.069,
+			"p99_frame_ms": 7.091,
+			"quality": "medium",
+			"root_pixels": [
+				1920,
+				1080
+			],
+			"vsync": "disabled",
+			"wall_seconds": 8.002545
+		},
+		{
+			"agents": 20,
+			"average_fps": 214.712167659851,
+			"background_paid_acceptance_contention": true,
+			"frames": 1719,
+			"frames_over_16_67ms_percent": 3.19953461314718,
+			"logical_minute_at_end": 3.6,
+			"map": "residence",
+			"max_fps": 0,
+			"median_frame_ms": 3.585,
+			"mode": "offline_demo_running",
+			"observer_pixels": [
+				1920,
+				1080
+			],
+			"p95_frame_ms": 10.038,
+			"p99_frame_ms": 21.196,
+			"quality": "medium",
+			"root_pixels": [
+				1920,
+				1080
+			],
+			"vsync": "disabled",
+			"wall_seconds": 8.006067
+		},
+		{
+			"agents": 20,
+			"average_fps": 253.368665783355,
+			"background_paid_acceptance_contention": true,
+			"frames": 2027,
+			"frames_over_16_67ms_percent": 0.0,
+			"logical_minute_at_end": 0.0,
+			"map": "research_station",
+			"max_fps": 0,
+			"median_frame_ms": 3.698,
+			"mode": "paused_presentation_with_animations",
+			"observer_pixels": [
+				1920,
+				1080
+			],
+			"p95_frame_ms": 5.555,
+			"p99_frame_ms": 6.763,
+			"quality": "medium",
+			"root_pixels": [
+				1920,
+				1080
+			],
+			"vsync": "disabled",
+			"wall_seconds": 8.0002
+		},
+		{
+			"agents": 20,
+			"average_fps": 215.599316731394,
+			"background_paid_acceptance_contention": true,
+			"frames": 1725,
+			"frames_over_16_67ms_percent": 1.6231884057971,
+			"logical_minute_at_end": 3.2,
+			"map": "research_station",
+			"max_fps": 0,
+			"median_frame_ms": 3.735,
+			"mode": "offline_demo_running",
+			"observer_pixels": [
+				1920,
+				1080
+			],
+			"p95_frame_ms": 9.101,
+			"p99_frame_ms": 19.777,
+			"quality": "medium",
+			"root_pixels": [
+				1920,
+				1080
+			],
+			"vsync": "disabled",
+			"wall_seconds": 8.000953
+		}
+	],
+	"renderer": "Windows",
+	"started_utc": "2026-11-15T13:13:12"
+}

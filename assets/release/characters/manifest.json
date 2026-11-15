@@ -1,0 +1,44 @@
+{
+  "models": [
+    "human_male.glb",
+    "human_female.glb"
+  ],
+  "height_metres": 1.78,
+  "animations": [
+    "Idle_Loop",
+    "Walk_Loop",
+    "Jog_Fwd_Loop",
+    "Sword_Attack",
+    "Sword_Idle",
+    "PickUp_Table",
+    "Interact",
+    "Death01",
+    "Fixing_Kneeling",
+    "Sitting_Idle_Loop",
+    "Idle_Talking_Loop",
+    "Crouch_Fwd_Loop",
+    "Crouch_Idle_Loop",
+    "Hit_Chest",
+    "Hit_Head",
+    "Sitting_Enter",
+    "Sitting_Exit",
+    "Push_Loop",
+    "Punch_Jab",
+    "Sleep_Loop",
+    "Crawl_Loop"
+  ],
+  "hairstyles": [
+    "Hair_0",
+    "Hair_1",
+    "Hair_2",
+    "Hair_3"
+  ],
+  "tint_materials": [
+    "Shirt",
+    "Trousers",
+    "Shoes"
+  ],
+  "source": "https://quaternius.com/packs/universalbasecharacters.html",
+  "animations_source": "https://quaternius.com/packs/universalanimationlibrary.html",
+  "license": "CC0-1.0"
+}

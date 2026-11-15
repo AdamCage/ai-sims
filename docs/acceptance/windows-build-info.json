@@ -1,0 +1,30 @@
+{
+  "product": "AI Sims",
+  "version": "0.2.0",
+  "platform": "windows-x86_64",
+  "engine": "4.7.2.stable.official.ed1daf0bf",
+  "build_utc": "2026-11-15T13:15:58.6294708Z",
+  "git_commit": "c466f7aea85c2524325082bd21f3f8e2d1a90536",
+  "source_dirty": true,
+  "runtime_source_sha256": "e654509bc3375197e8cbfc5472a29eeb85037ed4be0ccbba3283198b046839d6",
+  "offline_tests": "passed",
+  "png_encoder_tests": "passed",
+  "engine_executable_sha256": "c8f0a6bc45a19b33541501e57f6f7cd972ab18453743266339d495cbbe846643",
+  "export_template_sha256": "d34d36f3be1a6c49c56525ae86469b92e4f417ddf0b43cf00dd80c385c4b0562",
+  "credential_bridge_sha256": "e7c49ba1dbd8caac394626e9f4e894bb97d2ecfb7979be0587f496f639d966d6",
+  "real_ai_acceptance": "not_run_by_build",
+  "target_gpu_acceptance": "not_run_by_build",
+  "files": {
+    "AI-Sims.exe": "4c21e72bf4431f86a84c799f4f95b8c49c362943a06e80bcf5ff2647826843e1",
+    "AI-Sims.pck": "c7ff11f42ba2b36ce110ea22e041c4630ee2ae377214564aeb74b0a3b94b24c3",
+    "asset-manifest.json": "0ef81f58722235abacda973c37f83f7ff46b2ecc3bc8e3afe9ba6c39073b2841",
+    "CREDITS.txt": "e8df91f47890efab9bcfbb9ae354114bd44f65a92d8e1889171559612929599b",
+    "LICENSES/Godot-COPYRIGHT.txt": "cb1980c88089573bcacd7221d777c689bb8bbd778799f24c27fca0fe5f774d6d",
+    "LICENSES/Godot-LICENSE.txt": "b0435e3b3e4e55238f05f4b306f30524a1b2e20147810d436eaa554fa6855c80",
+    "LICENSES/Kenney-Furniture.txt": "ed6c6ee48512d4c1325760bb7dc50d764d147021a2a43976c08743e81be4c3d1",
+    "LICENSES/Original-Art.txt": "8fe53fc9d30ccd8ea35c1c9f0bdfa03e44ec6c772abf734ba003c341647dfff2",
+    "LICENSES/Quaternius-Animations.txt": "6d01f55c6e4c49a2c9963e147e561945ae2c83958c8ca667d90a6bffdbfac061",
+    "LICENSES/Quaternius-Characters.txt": "0f4beaf0fe360a7732e58bbe3dbf60a2422367fbea60cb9ea4add968f383268e",
+    "README.txt": "ee099d86885484282d38d1ba5a3b7f73de786e0d4b764ed976a8cc583d9b8c79"
+  }
+}

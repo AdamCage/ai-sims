@@ -1,0 +1,52 @@
+{
+	"checks": 3,
+	"failures": [],
+	"kind": "offline_demo_24_simulated_hours_per_map",
+	"maps": [
+		{
+			"actual_consume_events": 30,
+			"agents": 20,
+			"alive_at_end": 19,
+			"door_openings": 4,
+			"map": "closed_block",
+			"minutes_per_step": 5,
+			"move_intentions": 1422,
+			"ration_requests": 0,
+			"shop_rations_at_end": 10,
+			"simulated_minutes": 1440.0,
+			"sleep_intentions": 19,
+			"terminal_stock_at_end": 60,
+			"turn_intentions": 1257
+		},
+		{
+			"actual_consume_events": 23,
+			"agents": 20,
+			"alive_at_end": 19,
+			"door_openings": 8,
+			"map": "residence",
+			"minutes_per_step": 5,
+			"move_intentions": 1718,
+			"ration_requests": 5,
+			"shop_rations_at_end": 30,
+			"simulated_minutes": 1440.0,
+			"sleep_intentions": 20,
+			"terminal_stock_at_end": 55,
+			"turn_intentions": 1149
+		},
+		{
+			"actual_consume_events": 26,
+			"agents": 20,
+			"alive_at_end": 19,
+			"door_openings": 3,
+			"map": "research_station",
+			"minutes_per_step": 5,
+			"move_intentions": 1695,
+			"ration_requests": 6,
+			"shop_rations_at_end": 28,
+			"simulated_minutes": 1440.0,
+			"sleep_intentions": 19,
+			"terminal_stock_at_end": 54,
+			"turn_intentions": 1070
+		}
+	]
+}

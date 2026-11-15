@@ -1,0 +1,142 @@
+{
+	"completed": true,
+	"failures": [],
+	"initial_ledger": {
+		"active_requests": 0,
+		"limit_rub": 1000.0,
+		"over_budget": false,
+		"remaining_rub": 504.605826,
+		"request_count": 2135,
+		"reserved_rub": 0.0,
+		"spent_rub": 474.223399,
+		"storage_error": "",
+		"unknown_rub": 21.170775
+	},
+	"kind": "real_vlm_wall_clock_acceptance",
+	"ledger": {
+		"active_requests": 0,
+		"limit_rub": 1000.0,
+		"over_budget": false,
+		"remaining_rub": 498.769082,
+		"request_count": 2253,
+		"reserved_rub": 0.0,
+		"spent_rub": 480.060143,
+		"storage_error": "",
+		"unknown_rub": 21.170775
+	},
+	"maps": [
+		{
+			"actions": {
+				"look": 13,
+				"speak": 3,
+				"turn": 4
+			},
+			"agents": 20,
+			"calls": 36,
+			"errors": [],
+			"game_minutes": 1.0,
+			"journal_restores_tick": true,
+			"ledger": {
+				"active_requests": 0,
+				"limit_rub": 1000.0,
+				"over_budget": false,
+				"remaining_rub": 502.538391,
+				"request_count": 2175,
+				"reserved_rub": 0.0,
+				"spent_rub": 476.290834,
+				"storage_error": "",
+				"unknown_rub": 21.170775
+			},
+			"map_id": "closed_block",
+			"moved_agents": 0,
+			"network_time_is_frozen": true,
+			"round_ticks": 5,
+			"save_loadable": true,
+			"successful_actions": {
+				"look": 13,
+				"speak": 3,
+				"turn": 4
+			},
+			"wall_seconds": 75.431
+		},
+		{
+			"actions": {
+				"look": 13,
+				"move": 1,
+				"speak": 4,
+				"turn": 2
+			},
+			"agents": 20,
+			"calls": 34,
+			"errors": [],
+			"game_minutes": 1.0,
+			"journal_restores_tick": true,
+			"ledger": {
+				"active_requests": 0,
+				"limit_rub": 1000.0,
+				"over_budget": false,
+				"remaining_rub": 500.525986,
+				"request_count": 2215,
+				"reserved_rub": 0.0,
+				"spent_rub": 478.303239,
+				"storage_error": "",
+				"unknown_rub": 21.170775
+			},
+			"map_id": "residence",
+			"moved_agents": 1,
+			"network_time_is_frozen": true,
+			"round_ticks": 5,
+			"save_loadable": true,
+			"successful_actions": {
+				"look": 13,
+				"speak": 4,
+				"turn": 2
+			},
+			"wall_seconds": 81.168
+		},
+		{
+			"actions": {
+				"look": 8,
+				"move": 5,
+				"move_to": 2,
+				"plan_completed": 5,
+				"speak": 5
+			},
+			"agents": 20,
+			"calls": 32,
+			"errors": [],
+			"game_minutes": 1.0,
+			"journal_restores_tick": true,
+			"ledger": {
+				"active_requests": 0,
+				"limit_rub": 1000.0,
+				"over_budget": false,
+				"remaining_rub": 498.769082,
+				"request_count": 2253,
+				"reserved_rub": 0.0,
+				"spent_rub": 480.060143,
+				"storage_error": "",
+				"unknown_rub": 21.170775
+			},
+			"map_id": "research_station",
+			"moved_agents": 7,
+			"network_time_is_frozen": true,
+			"round_ticks": 5,
+			"save_loadable": true,
+			"successful_actions": {
+				"look": 8,
+				"move": 5,
+				"move_to": 2,
+				"plan_completed": 5,
+				"speak": 5
+			},
+			"wall_seconds": 81.908
+		}
+	],
+	"one_hour_wall_clock": false,
+	"provider": [
+		"byteplus"
+	],
+	"started_utc": "2026-11-15T13:12:38",
+	"wall_seconds": 242.217
+}

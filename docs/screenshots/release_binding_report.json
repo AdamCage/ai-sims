@@ -1,0 +1,96 @@
+{
+	"bindings": [
+		{
+			"category": "prop",
+			"expected_uv": [
+				0.5,
+				0.498722195625305
+			],
+			"kind": "terminal",
+			"observer_only_world_id": "supply_terminal",
+			"ref": "v0",
+			"uv": [
+				0.5,
+				0.499
+			]
+		},
+		{
+			"category": "door",
+			"expected_uv": [
+				0.915285587310791,
+				0.0337342321872711
+			],
+			"kind": "door",
+			"observer_only_world_id": "door_0",
+			"ref": "v1",
+			"uv": [
+				0.915,
+				0.034
+			]
+		},
+		{
+			"category": "item",
+			"expected_uv": [
+				0.218911841511726,
+				0.490775883197784
+			],
+			"kind": "ration",
+			"observer_only_world_id": "ration_07",
+			"ref": "v2",
+			"uv": [
+				0.219,
+				0.491
+			]
+		},
+		{
+			"category": "item",
+			"expected_uv": [
+				0.131064713001251,
+				0.470560073852539
+			],
+			"kind": "ration",
+			"observer_only_world_id": "ration_06",
+			"ref": "v3",
+			"uv": [
+				0.131,
+				0.471
+			]
+		},
+		{
+			"category": "item",
+			"expected_uv": [
+				0.0548092424869537,
+				0.453011780977249
+			],
+			"kind": "ration",
+			"observer_only_world_id": "ration_05",
+			"ref": "v4",
+			"uv": [
+				0.055,
+				0.453
+			]
+		},
+		{
+			"category": "prop",
+			"expected_uv": [
+				0.186348885297775,
+				0.257553249597549
+			],
+			"kind": "shelf",
+			"observer_only_world_id": "storage_shelf",
+			"ref": "v5",
+			"uv": [
+				0.186,
+				0.258
+			]
+		}
+	],
+	"checks": 14,
+	"failures": [],
+	"fixture_calls": 1,
+	"logical_minute_before": 0.0,
+	"mode": "actual_main_fixture_no_HTTP_no_vault",
+	"paid_calls": 0,
+	"source_hash": "4600f3e9eead8d885a71d077d60aa4061f44799d52afb790a849dfbd4b327f9b",
+	"terminal_ref": "v0"
+}

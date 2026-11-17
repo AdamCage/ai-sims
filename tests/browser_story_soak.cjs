@@ -97,7 +97,6 @@ async function run() {
     await (await download).saveAs(file);
     return inspectDownload(file);
   };
-  const speed2 = async () => { await click(271, 815); await click(271, 918); };
   try {
     const boot = Date.now();
     await page.goto(url);
@@ -141,6 +140,17 @@ async function run() {
       if (!(await panelPatch()).equals(popup)) await click(68, 135);
       await expectPopup();
     };
+    // Set and verify the pace while paused. A PopupMenu suppresses rapid
+    // follow-up clicks on some browsers, especially just after loading a save.
+    await click(1048, 212);
+    await click(271, 815);
+    await page.waitForTimeout(800);
+    await shot('pace-menu');
+    await click(271, 918);
+    await shot('pace-selected');
+    await backup('pace');
+    assert.equal((await slot()).speed, 2, 'The speed control selected 2x');
+    await ensurePopup();
     const started = Date.now();
     await page.evaluate(() => {
       const samples = [];
@@ -163,7 +173,9 @@ async function run() {
       window.finishStoryFpsSample = () => { cancelAnimationFrame(handle); return samples; };
     });
     await click(720, resumeFile ? 598 : 699);
-    await speed2();
+    // Starting a restored Web session can present its current chapter again
+    // after the Run command. Close that card while the world continues.
+    if ((await panelPatch()).equals(popup)) await click(1048, 212);
     assert.ok(!(await panelPatch()).equals(popup), 'Observation has begun');
     if (!resumeFile) {
       const chapter2 = await checkpoint(s => s.phase === 2, 'chapter_2');

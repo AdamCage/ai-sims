@@ -1,0 +1,157 @@
+{
+  "date": "2026-11-17",
+  "version": "0.3.0-beta.1",
+  "test": "tests/browser_story_soak.cjs",
+  "full_day": {
+    "core": "core-a0782bd70b5f0c75.pck.bin",
+    "browser": "Chrome 157.0.8103.79",
+    "os": "Windows",
+    "renderer": "WebGL2, ANGLE D3D11, NVIDIA GeForce RTX 4080 SUPER",
+    "canvas_pixels": [
+      1440,
+      900
+    ],
+    "map": "residence",
+    "seed": 1,
+    "actors": 8,
+    "mode": "offline_demo",
+    "router_connected": false,
+    "pace": "1x through 08:10 while selecting the control, then 2x",
+    "wall_seconds_approx": 740,
+    "observed_chapters": [
+      "08:00",
+      "11:00",
+      "16:00"
+    ],
+    "intervention_elapsed_minutes": 240.4,
+    "interventions": [
+      "reserve",
+      "policy"
+    ],
+    "ending_clock": "20:00",
+    "outcome": "shared_home",
+    "alive": 8,
+    "ate": 8,
+    "received_help": 3,
+    "verified_sources": 3,
+    "download_checks": [
+      "AIS2 header",
+      "slot SHA-256",
+      "all archived PNG SHA-256 digests",
+      "contiguous compressed replay sequence"
+    ],
+    "copies": {
+      "18_00": {
+        "elapsed_minutes": 600.85,
+        "archive_bytes": 8350688,
+        "slot_bytes": 4470786,
+        "pngs": 17,
+        "transitions": 12019,
+        "events": 1412
+      },
+      "ending": {
+        "elapsed_minutes": 720.05,
+        "archive_bytes": 10431482,
+        "slot_bytes": 5078127,
+        "pngs": 23,
+        "transitions": 14403,
+        "events": 1640
+      },
+      "sandbox": {
+        "elapsed_minutes": 725.35,
+        "archive_bytes": 10664683,
+        "slot_bytes": 5102048,
+        "pngs": 24,
+        "transitions": 14511,
+        "events": 1650
+      },
+      "restored_sandbox": {
+        "elapsed_minutes": 725.35,
+        "archive_bytes": 10665074,
+        "slot_bytes": 5102427,
+        "pngs": 24,
+        "transitions": 14512,
+        "events": 1650
+      }
+    },
+    "last_automatic_slot_while_debrief_open": 660.25,
+    "final_autosave_passed": false,
+    "reload": {
+      "sandbox_restored": true,
+      "live_tick_before": 14507,
+      "live_tick_after": 14507.0,
+      "replay_first_visible_frame": 4,
+      "replay_later_visible_frame": 20,
+      "replay_total_frames": 14512,
+      "replay_sample_separation_seconds": 5.5
+    },
+    "performance": {
+      "first_menu_seconds_approx": 23.2,
+      "sample_window_seconds": 10,
+      "sample_windows": 71,
+      "animation_fps_min_median_max": [
+        50,
+        75,
+        148
+      ],
+      "engine_fps_min_median_max": [
+        36,
+        77,
+        158
+      ],
+      "longest_observed_frame_gap_ms": 417,
+      "conditions": "Shared Windows workstation during release QA."
+    },
+    "page_or_console_errors": 0
+  },
+  "control_reproduction": {
+    "core": "core-7086a93c216e121c.pck.bin",
+    "from": "18:00 portable copy of the full run",
+    "play_to_debrief_ms": 120340,
+    "ending_slot_elapsed_minutes": 660.9,
+    "ending_autosave_passed": false
+  },
+  "fixed_build_recheck": {
+    "core": "core-d097632b68a594a4.pck.bin",
+    "raw_core_sha256": "ccdf18a33f5424b5b514b506039620bc6696a0beada4f753a3bf3b5dfb31fc62",
+    "from": "18:00 portable copy of the full run, imported using the normal UI",
+    "play_to_debrief_ms": 240053,
+    "timing_conditions": "Two isolated Chrome contexts playing on the same GPU",
+    "ending_autosave_before_manual_backup": true,
+    "ending_autosave_minutes": 720.05,
+    "ending_autosave_replay_frames": 14404,
+    "sandbox_autosave_before_manual_backup": true,
+    "sandbox_autosave_replay_frames": 14405,
+    "preserved_tick_after_reload": true,
+    "restored_tick": 14456,
+    "restored_new_generation": true,
+    "restored_image_hashes_identical": true,
+    "replay_clock_advanced": true,
+    "page_console_or_http_errors": 0,
+    "passed": true,
+    "pace": 1
+  },
+  "release_recheck": {
+    "completed_local_date": "2026-11-18",
+    "core": "core-0f073b7ed3101576.pck.bin",
+    "raw_core_sha256": "db9009d2eee2d287cc0193a720fcc8cc11dd6ca916a930ff326f5268cd6f47bc",
+    "from": "18:00 portable copy of the full run, imported using the normal UI",
+    "pace": 2,
+    "play_to_debrief_ms": 120732,
+    "ending_autosave_before_manual_backup": true,
+    "ending_autosave_minutes": 720.05,
+    "ending_autosave_replay_frames": 14404,
+    "sandbox_autosave_before_manual_backup": true,
+    "sandbox_autosave_replay_frames": 14405,
+    "ending_archive_bytes": 10327443,
+    "ending_slot_bytes": 5079824,
+    "ending_photos": 23,
+    "sandbox_tick_before_reload": 14509,
+    "sandbox_tick_after_reload": 14509,
+    "restored_new_generation": true,
+    "restored_photo_hashes_preserved": true,
+    "replay_clock_advanced": true,
+    "page_console_or_http_errors": 0,
+    "passed": true
+  }
+}

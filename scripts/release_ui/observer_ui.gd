@@ -5,9 +5,12 @@ signal command(name: String, payload: Dictionary)
 
 const Catalog = preload("res://scripts/game/action_catalog.gd")
 const Spatial = preload("res://scripts/game/spatial_rules.gd")
-const INK := Color("18252e")
-const MUTED := Color("8fa7ae")
-const TEXT := Color("e8ede7")
+const INK := Color("142330")
+const CREAM := Color("f4efdf")
+const CORAL := Color("ee947f")
+const SAGE := Color("9fcbb5")
+const MUTED := Color("b1c1c8")
+const TEXT := Color("f4efdf")
 const GOLD := Color("e1bd78")
 const GREEN := Color("8ac4b0")
 const MAP_IDS := ["closed_block","residence","research_station"]
@@ -117,20 +120,60 @@ var _group_note: Label
 var _available_contacts: Array=[]
 var _pending_app_choice: String=""
 var _device_actor: String=""
+var _scenario_title: Label
+var _problem: Label
+var _phase_label: Label
+var _activity: Label
+var _intent: Label
+var _obstacle: Label
+var _portrait_image: TextureRect
+var _activity_progress: ProgressBar
+var _journal_rows: VBoxContainer
+var _event_search: LineEdit
+var _live_events: VBoxContainer
+var _event_lookup: Dictionary={}
+const JOURNAL_PAGE_SIZE:=40
+var _journal_page:=0
+var _older_events:Button
+var _newer_events:Button
+var _page_number:Label
+var _district_choice: OptionButton
+var _district_signature: String=""
+var _chapter_popup: PopupPanel
+var _chapter_title: Label
+var _chapter_text: RichTextLabel
+var _chapter_continue: Button
+var _intervention_box: VBoxContainer
+var _seen_chapter: String=""
+var _debrief_key: String=""
+var _last_status: String=""
+var _map_cards: Array=[]
+var _story_description: Label
+var _portrait_signature: String=""
+var _phone_apps: Array=[]
+var _effective_speed: Label
+var _phone_app_heading: Label
+var _web_connect_button: Button
+var _detail_popup: PopupPanel
+var _card_activity: Dictionary={}
+var _continue_save:Button
+var _retry_decision:Button
+
 
 func setup(world: Node) -> void:
 	_world=world
 	get_viewport().gui_embed_subwindows=true
 	if is_instance_valid(_root): _root.queue_free()
 	_agent_buttons.clear()
-	_screen_signature=""; _last_journal_signature=""
+	_screen_signature=""; _last_journal_signature="";_portrait_signature="";_district_signature=""
 	_root=Control.new(); _root.name="PlayerInterface"; _root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_root)
 	_root.theme=_theme()
 	_build_immersive_hud()
 	_modal_backdrop=ColorRect.new();_modal_backdrop.color=Color(0.02,0.04,0.05,0.48);_modal_backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);_root.add_child(_modal_backdrop);_modal_backdrop.hide()
-	_build_new_dialog(); _build_settings_dialog(); _build_appearance_dialog(); _build_god_dialog(); _build_help_dialog(); _build_phone_dialog(); _build_group_dialog(); _build_main_menu()
+	_build_new_dialog(); _build_settings_dialog(); _build_appearance_dialog(); _build_god_dialog(); _build_help_dialog(); _build_phone_dialog(); _build_group_dialog(); _build_chapter_dialog(); _build_map_dialog(); _build_main_menu()
 	if is_instance_valid(_world) and _world.has_signal("agent_picked") and not _world.agent_picked.is_connected(_pick_person): _world.agent_picked.connect(_pick_person)
+	if _world.has_signal("portrait_ready") and not _world.portrait_ready.is_connected(_portrait_ready):_world.portrait_ready.connect(_portrait_ready)
 	set_running(_running)
 	show_main_menu(_menu_visible)
 	if not _state.is_empty(): refresh(_state,_debug,_info)
@@ -145,22 +188,19 @@ func refresh(state: Dictionary, debug: Dictionary, session_info: Dictionary) -> 
 		for child in _root.get_children():
 			if child is PopupPanel and child.visible:child.hide()
 		if is_instance_valid(_world):_world.suspend_character_preview()
-		_screen_signature="";_last_gallery_ref=""
+		_screen_signature="";_last_gallery_ref="";_last_journal_signature="";_seen_chapter="";_debrief_key="";_journal_page=0
 	var agents: Dictionary=state.get("agents",{})
 	if agents.has(str(session_info.get("selected",""))): selected_agent=str(session_info.selected)
 	if selected_agent.is_empty() or not agents.has(selected_agent): selected_agent=str(agents.keys()[0]) if not agents.is_empty() else ""
 	if _agent_buttons.size()!=agents.size(): _rebuild_roster(agents)
-	var minute: float=float(state.get("minute",0))
+	var minute: float=float(state.get("minute",0))+float(state.get("scenario_state",{}).get("display_start_minute",state.get("display_start_minute",0)))
 	_time.text=_t("ДЕНЬ %d  ·  %02d:%02d","DAY %d  ·  %02d:%02d") % [int(minute/1440.0)+1,int(fmod(minute,1440.0)/60.0),int(fmod(minute,60.0))]
 	for id in _agent_buttons:
 		if not agents.has(id): continue
 		var a: Dictionary=agents[id]
 		_agent_buttons[id].text=str(a.get("name",id))+"\n"+_t("Здоровье %d · голод %d","Health %d · hunger %d") % [roundi(float(a.get("health",100))),roundi(float(a.get("needs",{}).get("hunger",0)))]
 		_agent_buttons[id].button_pressed=id==selected_agent
-	_roster_toggle.text=_t("Персонажи · %d","People · %d")%agents.size()
-	if agents.has(selected_agent):
-		var person: Dictionary=agents[selected_agent]
-		_person_card.text=str(person.get("name",selected_agent))+"\n"+_t("Здоровье %d · голод %d","Health %d · hunger %d")%[roundi(float(person.get("health",100))),roundi(float(person.get("needs",{}).get("hunger",0)))]
+	_roster_toggle.text=_t("Люди\n%d","People\n%d")%agents.size()
 	if agents.has(selected_agent): _refresh_person(agents[selected_agent])
 	if is_instance_valid(_world):
 		_first_person=bool(_world.first_person)
@@ -168,14 +208,18 @@ func refresh(state: Dictionary, debug: Dictionary, session_info: Dictionary) -> 
 		_eye_preview.texture=_world.agent_texture(selected_agent)
 	_refresh_journal(state.get("events",[]))
 	set_connection_state(session_info.get("connection",{}))
+	_continue_save.visible=session_info.get("slots",[]).any(func(slot):return int(slot.get("slot",0))==3 and bool(slot.get("exists",false)))
+	_refresh_alpha_state()
+	_refresh_chapter()
 
 func set_status(text: String) -> void:
+	_last_status=text
 	if is_instance_valid(_status): _status.text=text
 	if is_instance_valid(_connection_status) and is_instance_valid(_settings_popup) and _settings_popup.visible: _connection_status.text=text
 
 func set_running(value: bool) -> void:
 	_running=value
-	if is_instance_valid(_run): _run.text=_t("Ⅱ Пауза","Ⅱ Pause") if value else _t("▶ Продолжить","▶ Continue")
+	if is_instance_valid(_run): _run.text=_t("Пауза","Pause") if value else _t("Продолжить","Continue")
 
 func set_connection_state(info: Dictionary) -> void:
 	if not is_instance_valid(_mode): return
@@ -198,6 +242,7 @@ func show_main_menu(value: bool=true) -> void:
 		if is_instance_valid(_journal_panel): _journal_panel.hide()
 
 func select_agent(id: String) -> void:
+	if not _state.is_empty() and not _state.get("agents",{}).has(id):return
 	selected_agent=id
 	if is_instance_valid(_world): _world.select_agent(id)
 
@@ -205,55 +250,77 @@ func _pick_person(id: String) -> void:
 	select_agent(id); command.emit("select",{"id":id}); _drawer.show(); _roster_panel.hide()
 
 func _show_phone() -> void:
-	_phone_popup.popup_centered(Vector2i(510,820))
+	_phone_popup.popup_centered_clamped(Vector2i(760,800),0.92)
 
 func _build_immersive_hud() -> void:
 	_hud_controls.clear()
-	var background:=ColorRect.new(); background.color=Color("101b24"); background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); _root.add_child(background)
-	_central=TextureRect.new(); _central.name="WorldCanvas"; _central.expand_mode=TextureRect.EXPAND_IGNORE_SIZE; _central.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_COVERED; _central.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); _root.add_child(_central)
+	var background:=ColorRect.new(); background.color=INK; background.mouse_filter=Control.MOUSE_FILTER_IGNORE; background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); _root.add_child(background)
+	_central=TextureRect.new(); _central.name="WorldCanvas"; _central.expand_mode=TextureRect.EXPAND_IGNORE_SIZE; _central.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_place(_central,0,0,1,1,Vector4(88,132,-382,-182)); _root.add_child(_central)
 	_central.gui_input.connect(func(event): if is_instance_valid(_world): _world.handle_view_input(event,_central.size))
-	var top:=PanelContainer.new(); _place(top,0,0,1,0,Vector4(18,16,-18,72)); top.add_theme_stylebox_override("panel",_style(Color(0.075,0.12,0.15,0.92),Color(0.30,0.40,0.40,0.45),12,12)); _root.add_child(top); _hud_controls.append(top)
-	var row:=HBoxContainer.new(); row.add_theme_constant_override("separation",14); top.add_child(row)
-	_label(row,"AI SIMS",23,TEXT)
-	var divider:=VSeparator.new(); row.add_child(divider)
-	_time=_label(row,"",14,TEXT); _time.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	_mode=_label(row,"",13,GOLD)
-	_button(row,_t("Сменить вид","Switch view"),_toggle_view).tooltip_text=_t("Общий вид / глазами выбранного персонажа","World view / selected person's eyes")
-	_button(row,_t("Следить","Follow"),func(): if is_instance_valid(_world): _world.focus_agent()).tooltip_text=_t("Держать выбранного персонажа в центре камеры","Keep the selected person in the camera centre")
-	_button(row,_t("Новая история","New story"),show_new_session)
-	_button(row,_t("Настройки","Settings"),show_settings)
-	_button(row,"?",func(): _help_popup.popup_centered(Vector2i(780,640)))
-	_button(row,"☰",func(): show_main_menu(not _menu_visible))
-	_roster_toggle=Button.new(); _roster_toggle.text=_t("Персонажи","People"); _roster_toggle.pressed.connect(func():_roster_panel.visible=not _roster_panel.visible); _place(_roster_toggle,0,0,0,0,Vector4(18,88,195,126)); _root.add_child(_roster_toggle); _hud_controls.append(_roster_toggle)
-	_roster_panel=HBoxContainer.new(); _place(_roster_panel,0,0,0,1,Vector4(18,135,222,-120)); _root.add_child(_roster_panel); _build_roster(_roster_panel); _roster_panel.hide()
-	_drawer=HBoxContainer.new(); _place(_drawer,1,0,1,1,Vector4(-430,88,-18,-118)); _root.add_child(_drawer); _build_inspector(_drawer); _drawer.hide()
-	var card:=PanelContainer.new(); _place(card,0,1,0,1,Vector4(18,-103,310,-20)); card.add_theme_stylebox_override("panel",_style(Color(0.08,0.14,0.17,0.94),Color("76958c"),12,9)); _root.add_child(card); _hud_controls.append(card)
-	var card_row:=HBoxContainer.new(); card.add_child(card_row)
-	_person_card=_button(card_row,"",func(): _drawer.visible=not _drawer.visible); _person_card.alignment=HORIZONTAL_ALIGNMENT_LEFT; _person_card.size_flags_horizontal=Control.SIZE_EXPAND_FILL; _person_card.add_theme_font_size_override("font_size",15)
-	_person_card.flat=true
-	var phone_button:=_button(card_row,_t("Телефон","Phone"),_show_phone);phone_button.flat=true;phone_button.tooltip_text=_t("Открыть личное устройство","Open personal device")
-	var transport:=PanelContainer.new(); _place(transport,0.5,1,0.5,1,Vector4(-265,-80,265,-20)); transport.add_theme_stylebox_override("panel",_style(Color(0.075,0.12,0.15,0.95),Color("415d5d"),14,9)); _root.add_child(transport); _hud_controls.append(transport)
-	var controls:=HBoxContainer.new(); controls.add_theme_constant_override("separation",8); transport.add_child(controls)
-	_run=_button(controls,"",func(): command.emit("run",{"value":not _running})); _run.custom_minimum_size.x=128
-	_button(controls,_t("Шаг","Step"),func(): command.emit("step",{})).tooltip_text="N"
+	_central.resized.connect(_resize_canvas)
+	_resize_canvas.call_deferred()
+	var top:=PanelContainer.new(); top.name="SituationHeader"; _place(top,0,0,1,0,Vector4(16,14,-16,120)); top.add_theme_stylebox_override("panel",_style(Color("1d3342"),Color("385262"),20,16)); _root.add_child(top); _hud_controls.append(top)
+	var header:=VBoxContainer.new(); header.add_theme_constant_override("separation",9); top.add_child(header)
+	var row:=HBoxContainer.new(); row.add_theme_constant_override("separation",18); header.add_child(row)
+	_label(row,"AI SIMS",24,CREAM)
+	_scenario_title=_label(row,_t("Жизни под наблюдением","Lives under observation"),18,SAGE); _scenario_title.size_flags_horizontal=Control.SIZE_EXPAND_FILL; _scenario_title.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	_time=_label(row,"08:00",16,TEXT)
+	_mode=_label(row,"",14,SAGE)
+	_button(row,_t("Меню","Menu"),func():show_main_menu(true))
+	var situation:=HBoxContainer.new(); situation.add_theme_constant_override("separation",18); header.add_child(situation)
+	_phase_label=_label(situation,_t("ГЛАВА 1 / 3","CHAPTER 1 / 3"),14,CORAL)
+	_phase_label.mouse_filter=Control.MOUSE_FILTER_STOP
+	_phase_label.mouse_default_cursor_shape=Control.CURSOR_POINTING_HAND
+	_phase_label.tooltip_text=_t("Открыть главу и вмешательства","Open chapter and interventions")
+	_phase_label.gui_input.connect(func(event):
+		var story:Dictionary=_state.get("scenario_state",{})
+		if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and event.pressed and not story.is_empty():_show_chapter(story,bool(story.get("completed",false))))
+	_problem=_label(situation,_t("Выберите историю и узнайте её участников.","Choose a story and meet its people."),15,TEXT); _problem.size_flags_horizontal=Control.SIZE_EXPAND_FILL; _problem.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	var rail:=VBoxContainer.new(); rail.name="NavigationRail"; rail.add_theme_constant_override("separation",10); _place(rail,0,0,0,1,Vector4(16,134,80,-182)); _root.add_child(rail); _hud_controls.append(rail)
+	_roster_toggle=_button(rail,_t("Люди","People"),func():_roster_panel.visible=not _roster_panel.visible); _roster_toggle.tooltip_text=_t("Участники истории","Story participants")
+	_button(rail,_t("Карта","Map"),_show_map_navigation)
+	_button(rail,_t("Вид","View"),_toggle_view).tooltip_text=_t("V · Общий вид / глазами персонажа","V · Observer / person's eyes")
+	_button(rail,_t("Фокус","Focus"),func():if is_instance_valid(_world):_world.focus_agent()).tooltip_text=_t("F · Следить за выбранным","F · Follow selected person")
+	_button(rail,_t("Мир","World"),_open_god)
+	var rail_space:=Control.new(); rail_space.size_flags_vertical=Control.SIZE_EXPAND_FILL; rail.add_child(rail_space)
+	_button(rail,"?",func():_help_popup.popup_centered_clamped(Vector2i(800,680),0.92))
+	_button(rail,_t("Опции","Options"),show_settings)
+	_roster_panel=HBoxContainer.new(); _roster_panel.name="PeopleDrawer"; _place(_roster_panel,0,0,0,1,Vector4(88,134,344,-182)); _root.add_child(_roster_panel); _build_roster(_roster_panel); _roster_panel.hide()
+	_drawer=HBoxContainer.new(); _drawer.name="SelectedPerson"; _place(_drawer,1,0,1,1,Vector4(-370,134,-16,-182)); _root.add_child(_drawer); _build_inspector(_drawer); _hud_controls.append(_drawer)
+	var transport:=PanelContainer.new(); transport.name="LiveChronicle"; _place(transport,0,1,1,1,Vector4(16,-170,-16,-14)); transport.add_theme_stylebox_override("panel",_style(Color("1d3342"),Color("385262"),18,12)); _root.add_child(transport); _hud_controls.append(transport)
+	var bottom:=VBoxContainer.new(); bottom.add_theme_constant_override("separation",8); transport.add_child(bottom)
+	var controls:=HBoxContainer.new(); controls.add_theme_constant_override("separation",8); bottom.add_child(controls)
+	_run=_button(controls,"",func():command.emit("run",{"value":not _running})); _run.custom_minimum_size.x=146; _run.add_theme_stylebox_override("normal",_style(SAGE,SAGE,10,10)); _run.add_theme_color_override("font_color",INK)
+	_button(controls,_t("Шаг","Step"),func():command.emit("step",{})).tooltip_text="N"
 	var speed:=OptionButton.new(); controls.add_child(speed)
-	for value in [0.5,1.0,2.0,5.0,10.0]: speed.add_item("%.1f×"%value); speed.set_item_metadata(speed.item_count-1,value)
-	speed.select(1); speed.item_selected.connect(func(index):command.emit("settings",{"speed":float(speed.get_item_metadata(index))}))
-	_slot=OptionButton.new(); _slot.hide(); controls.add_child(_slot)
+	for value in [0.5,1.0,2.0]:speed.add_item("%.1f×"%value);speed.set_item_metadata(speed.item_count-1,value)
+	speed.select(1);speed.item_selected.connect(func(index):command.emit("settings",{"speed":float(speed.get_item_metadata(index))}))
+	_effective_speed=_label(controls,"",14,MUTED); _effective_speed.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	_status=_label(controls,"",14,CREAM);_status.size_flags_horizontal=Control.SIZE_EXPAND_FILL;_status.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	_slot=OptionButton.new();_slot.hide();controls.add_child(_slot)
 	for index in 3:_slot.add_item(str(index+1),index)
-	var saves:=MenuButton.new(); saves.text=_t("Сохранения","Saves"); controls.add_child(saves)
+	var saves:=MenuButton.new();saves.text=_t("Сохранения","Saves");controls.add_child(saves)
 	for index in 3:saves.get_popup().add_item(_t("Сохранить · слот %d","Save · slot %d")%(index+1),index+1)
 	saves.get_popup().add_separator()
 	for index in 3:saves.get_popup().add_item(_t("Загрузить · слот %d","Load · slot %d")%(index+1),index+11)
-	saves.get_popup().id_pressed.connect(func(id):command.emit("save" if id<10 else "load",{"slot":id if id<10 else id-10}))
+	if OS.has_feature("web"):
+		saves.get_popup().add_separator();saves.get_popup().add_item(_t("Экспорт резервной копии","Export backup"),30);saves.get_popup().add_item(_t("Импорт резервной копии","Import backup"),31)
+	saves.get_popup().id_pressed.connect(func(id):
+		if id==30:command.emit("export_backup",{})
+		elif id==31:command.emit("import_backup",{})
+		else:command.emit("save" if id<10 else "load",{"slot":id if id<10 else id-10}))
 	_button(controls,_t("Повтор","Replay"),func():command.emit("replay",{}))
-	_journal_toggle=Button.new(); _journal_toggle.text=_t("Хроника","Chronicle"); _journal_toggle.pressed.connect(func():_journal_panel.visible=not _journal_panel.visible); _place(_journal_toggle,1,1,1,1,Vector4(-150,-61,-18,-20)); _root.add_child(_journal_toggle); _hud_controls.append(_journal_toggle)
-	_journal_panel=VBoxContainer.new(); _place(_journal_panel,0,1,1,1,Vector4(18,-310,-18,-115)); _root.add_child(_journal_panel); _build_journal(_journal_panel); _journal_panel.hide()
-	_toast=Label.new(); _toast.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT; _toast.add_theme_font_size_override("font_size",13); _toast.add_theme_color_override("font_color",TEXT); _toast.add_theme_color_override("font_shadow_color",Color("15252b")); _toast.add_theme_constant_override("shadow_offset_x",1); _toast.add_theme_constant_override("shadow_offset_y",1); _place(_toast,0.5,1,1,1,Vector4(-80,-128,-18,-90)); _root.add_child(_toast); _hud_controls.append(_toast)
-	_status=Label.new(); _status.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER; _status.add_theme_font_size_override("font_size",12); _status.add_theme_color_override("font_color",Color("dce5dc")); _status.add_theme_color_override("font_shadow_color",Color("16242b")); _status.add_theme_constant_override("shadow_offset_y",1); _place(_status,0.25,0,0.75,0,Vector4(0,79,0,104)); _root.add_child(_status); _hud_controls.append(_status)
+	_journal_toggle=_button(controls,_t("Вся хроника","Full chronicle"),func():_journal_panel.visible=not _journal_panel.visible)
+	_live_events=VBoxContainer.new(); _live_events.name="RecentEvents"; _live_events.add_theme_constant_override("separation",2);bottom.add_child(_live_events)
+	_journal_panel=VBoxContainer.new();_journal_panel.name="ChronicleDrawer";_place(_journal_panel,0,0,1,1,Vector4(88,134,-382,-182));_root.add_child(_journal_panel);_build_journal(_journal_panel);_journal_panel.hide()
+	_journal_panel.visibility_changed.connect(func():
+		if _journal_panel.is_visible_in_tree():_set_journal_page(0))
+	_toast=Label.new();_toast.hide();_root.add_child(_toast)
 
 func _build_phone_dialog() -> void:
-	var content:=_dialog(_t("Личное устройство","Personal device")); _phone_popup=content.popup
+	var content:=_dialog(_t("Личный телефон","Personal phone"));_phone_popup=content.popup
+	_phone_app_heading=_wrapped_label(content.box,_t("Приложения, разговоры и личные воспоминания.","Apps, conversations and personal memories."),16,SAGE)
 	_build_device_tab(content.box)
 
 func _place(control: Control, left: float, top: float, right: float, bottom: float, offsets: Vector4) -> void:
@@ -276,10 +343,10 @@ func show_settings() -> void:
 	_budget.value=float(_info.get("settings",{}).get("budget",_budget.value))
 	_speed.value=float(_info.get("settings",{}).get("speed",_speed.value))
 	_sfx.value=float(_info.get("settings",{}).get("sfx_volume",0.5))
-	_settings_popup.popup_centered(Vector2i(680,635))
+	_settings_popup.popup_centered_clamped(Vector2i(740,700),0.92)
 
 func show_new_session() -> void:
-	_new_popup.popup_centered(Vector2i(860,690))
+	_new_popup.popup_centered_clamped(Vector2i(1000,730),0.92)
 
 func _build_header(parent: VBoxContainer) -> void:
 	var panel:=_panel(parent,Color("1b2a33"))
@@ -294,9 +361,9 @@ func _build_header(parent: VBoxContainer) -> void:
 	_button(row,"☰",func(): show_main_menu(not _menu_visible))
 
 func _build_roster(parent: HBoxContainer) -> void:
-	var panel:=_panel(parent,Color("182730")); panel.custom_minimum_size.x=182
+	var panel:=_panel(parent,Color("182730")); panel.custom_minimum_size.x=256
 	var layout:=VBoxContainer.new(); layout.add_theme_constant_override("separation",10); panel.add_child(layout)
-	_label(layout,_t("ПЕРСОНАЖИ","PEOPLE"),12,MUTED)
+	_label(layout,_t("УЧАСТНИКИ ИСТОРИИ","STORY PARTICIPANTS"),14,SAGE)
 	var scroll:=ScrollContainer.new(); scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL; scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED; layout.add_child(scroll)
 	_agent_rows=VBoxContainer.new(); _agent_rows.size_flags_horizontal=Control.SIZE_EXPAND_FILL; _agent_rows.add_theme_constant_override("separation",7); scroll.add_child(_agent_rows)
 	_button(layout,_t("Создать образ","Character editor"),_open_appearance)
@@ -324,15 +391,28 @@ func _build_world(parent: HBoxContainer) -> void:
 	_button(controls,_t("История","Replay"),func(): command.emit("replay",{}))
 
 func _build_inspector(parent: HBoxContainer) -> void:
-	var panel:=_panel(parent,Color("192932")); panel.custom_minimum_size.x=388; panel.size_flags_horizontal=Control.SIZE_FILL
-	var layout:=VBoxContainer.new(); layout.add_theme_constant_override("separation",8); panel.add_child(layout)
-	var title:=HBoxContainer.new(); layout.add_child(title)
-	_name=_label(title,"",25,GOLD); _name.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	_button(title,_t("Образ","Appearance"),_open_appearance)
-	_button(title,"×",func():_drawer.hide())
-	_tabs=TabContainer.new(); _tabs.size_flags_vertical=Control.SIZE_EXPAND_FILL; _tabs.add_theme_font_size_override("font_size",12); layout.add_child(_tabs)
+	var panel:=_panel(parent,Color("1d3342")); panel.custom_minimum_size.x=354; panel.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	var layout:=VBoxContainer.new(); layout.add_theme_constant_override("separation",9); panel.add_child(layout)
+	var title:=HBoxContainer.new();layout.add_child(title)
+	_name=_label(title,"",23,CREAM);_name.size_flags_horizontal=Control.SIZE_EXPAND_FILL;_name.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	_button(title,_t("Образ","Style"),_open_appearance)
+	var summary:=HBoxContainer.new();summary.add_theme_constant_override("separation",12);layout.add_child(summary)
+	var portrait_panel:=_panel(summary,Color("304b55"));portrait_panel.custom_minimum_size=Vector2(96,120);portrait_panel.size_flags_vertical=Control.SIZE_SHRINK_BEGIN
+	_portrait_image=TextureRect.new();_portrait_image.name="CharacterPortrait";_portrait_image.expand_mode=TextureRect.EXPAND_IGNORE_SIZE;_portrait_image.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_COVERED;portrait_panel.add_child(_portrait_image)
+	var activity_box:=VBoxContainer.new();activity_box.size_flags_horizontal=Control.SIZE_EXPAND_FILL;summary.add_child(activity_box)
+	_label(activity_box,_t("ПРЯМО СЕЙЧАС","RIGHT NOW"),14,SAGE)
+	_activity=_wrapped_label(activity_box,"",16,CREAM)
+	_intent=_wrapped_label(activity_box,"",14,MUTED)
+	_intent.max_lines_visible=3;_intent.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+	_obstacle=_wrapped_label(layout,"",14,CORAL)
+	_retry_decision=_button(layout,_t("Запросить новое решение","Request a new decision"),func():command.emit("retry_agent",{"id":selected_agent}));_retry_decision.hide()
+	_activity_progress=ProgressBar.new();_activity_progress.custom_minimum_size.y=6;_activity_progress.show_percentage=false;layout.add_child(_activity_progress)
+	var shortcuts:=HBoxContainer.new();layout.add_child(shortcuts)
+	_button(shortcuts,_t("Телефон","Phone"),_show_phone).size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	_button(shortcuts,_t("Найти на карте","Find on map"),func():if is_instance_valid(_world):_world.focus_agent()).size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	_tabs=TabContainer.new();_tabs.size_flags_vertical=Control.SIZE_EXPAND_FILL;_tabs.add_theme_font_size_override("font_size",14);layout.add_child(_tabs)
 	var life:=_tab(_t("Жизнь","Life"))
-	_eye_preview=TextureRect.new(); _eye_preview.expand_mode=TextureRect.EXPAND_IGNORE_SIZE; _eye_preview.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED; _eye_preview.custom_minimum_size=Vector2(340,185); life.add_child(_eye_preview)
+	_eye_preview=TextureRect.new(); _eye_preview.expand_mode=TextureRect.EXPAND_IGNORE_SIZE; _eye_preview.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED; _eye_preview.custom_minimum_size=Vector2(290,150); life.add_child(_eye_preview);_eye_preview.hide()
 	_health=_bar(life,_t("Здоровье","Health"),Color("8fc8ad"))
 	_hunger=_bar(life,_t("Голод","Hunger"),Color("d9b979"))
 	_fatigue=_bar(life,_t("Усталость","Fatigue"),Color("a7add4"))
@@ -380,16 +460,22 @@ func _build_inspector(parent: HBoxContainer) -> void:
 func _build_device_tab(parent: VBoxContainer) -> void:
 	var device: VBoxContainer=parent
 	_device_slot=OptionButton.new(); device.add_child(_device_slot)
-	var row:=HBoxContainer.new(); device.add_child(row)
-	_app=OptionButton.new(); _app.size_flags_horizontal=Control.SIZE_EXPAND_FILL; row.add_child(_app)
-	for pair in [["messages","Сообщения","Messages"],["gallery","Галерея","Gallery"],["forum","Форум","Forum"],["votes","Голосования","Polls"],["pages","Страницы","Pages"],["game","Крестики-нолики","Tic-tac-toe"],["network","Управление сетью","Network control"]]:
-		_app.add_item(_t(pair[1],pair[2])); _app.set_item_metadata(_app.item_count-1,pair[0])
-	_button(row,_t("Открыть","Open"),func(): _send_intent({"type":"use_device","slot":_device_slot_index(),"app":str(_app.get_selected_metadata())}))
+	var row:=HBoxContainer.new();device.add_child(row)
+	_app=OptionButton.new();_app.hide();row.add_child(_app)
+	_phone_apps.clear()
+	var app_grid:=GridContainer.new();app_grid.columns=3;app_grid.add_theme_constant_override("h_separation",8);app_grid.add_theme_constant_override("v_separation",8);device.add_child(app_grid)
+	for pair in [["messages","Сообщения","Messages"],["gallery","Фотографии","Photos"],["forum","Форум","Forum"],["votes","Голосования","Polls"],["pages","Страницы","Pages"],["game","Игра","Game"],["network","Сеть","Network"]]:
+		var app_id:String=str(pair[0]);var app_index:int=_app.item_count
+		_app.add_item(_t(pair[1],pair[2]));_app.set_item_metadata(app_index,app_id)
+		var app_button:=_button(app_grid,_t(pair[1],pair[2]),func():
+			_app.select(app_index);_pending_app_choice=app_id;_show_device_panel()
+			_send_intent({"type":"use_device","slot":_device_slot_index(),"app":app_id}))
+		app_button.toggle_mode=true;app_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL;app_button.set_meta("app_id",app_id);_phone_apps.append(app_button)
 	var login:=HBoxContainer.new(); device.add_child(login)
 	_button(login,_t("Войти","Log in"),func(): _send_intent({"type":"login","slot":_device_slot_index()}))
 	_button(login,_t("Выйти","Log out"),func(): _send_intent({"type":"logout","slot":_device_slot_index()}))
 	_button(login,_t("Читать экран","Read screen"),func(): _send_intent({"type":"read_screen"}))
-	_device=_rich(device,150)
+	_device=_rich(device,85)
 	_label(device,_t("Собеседник","Contact"),12,MUTED)
 	_contact=OptionButton.new(); device.add_child(_contact)
 	_device_title=LineEdit.new(); _device_title.placeholder_text=_t("Тема / заголовок","Subject / title"); device.add_child(_device_title)
@@ -449,43 +535,76 @@ func _build_device_tab(parent: VBoxContainer) -> void:
 	_show_device_panel()
 
 func _build_journal(parent: VBoxContainer) -> void:
-	var panel:=_panel(parent,Color("17262f")); panel.custom_minimum_size.y=130
-	var layout:=VBoxContainer.new(); layout.add_theme_constant_override("separation",3); panel.add_child(layout)
-	var top:=HBoxContainer.new(); layout.add_child(top)
-	_label(top,_t("СОБЫТИЯ","EVENTS"),11,MUTED).size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	_event_filter=OptionButton.new(); _event_filter.add_item(_t("Все","All")); _event_filter.add_item(_t("Выбранный персонаж","Selected person")); top.add_child(_event_filter)
-	_event_filter.item_selected.connect(func(_index): _last_journal_signature=""; _refresh_journal(_state.get("events",[])))
-	_journal=_rich(layout,78); _journal.scroll_following=true
+	var panel:=_panel(parent,Color("1d3342"));panel.size_flags_vertical=Control.SIZE_EXPAND_FILL
+	var layout:=VBoxContainer.new();layout.add_theme_constant_override("separation",10);panel.add_child(layout)
+	var top:=HBoxContainer.new();layout.add_child(top)
+	_label(top,_t("Хроника истории","Story chronicle"),22,CREAM).size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	_button(top,"×",func():_journal_panel.hide())
+	var filter_row:=HBoxContainer.new();layout.add_child(filter_row)
+	_event_filter=OptionButton.new();filter_row.add_child(_event_filter)
+	for text in [_t("Важные события","Important events"),_t("Все действия","All actions"),_t("Выбранный герой","Selected person"),_t("Общение и связь","Social & network")]:_event_filter.add_item(text)
+	_event_filter.item_selected.connect(func(_index):_set_journal_page(0))
+	_event_search=LineEdit.new();_event_search.placeholder_text=_t("Найти имя или событие…","Find a name or event…");_event_search.size_flags_horizontal=Control.SIZE_EXPAND_FILL;filter_row.add_child(_event_search)
+	_event_search.text_changed.connect(func(_text):_set_journal_page(0))
+	var scroll:=ScrollContainer.new();scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL;scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED;layout.add_child(scroll)
+	_journal_rows=VBoxContainer.new();_journal_rows.size_flags_horizontal=Control.SIZE_EXPAND_FILL;_journal_rows.add_theme_constant_override("separation",6);scroll.add_child(_journal_rows)
+	_journal=_rich(layout,0);_journal.hide()
+	var pages:=HBoxContainer.new();layout.add_child(pages)
+	_newer_events=_button(pages,_t("Позже","Newer"),func():_set_journal_page(_journal_page-1))
+	_older_events=_button(pages,_t("Раньше","Older"),func():_set_journal_page(_journal_page+1))
+	_page_number=_label(pages,"",14,MUTED);_page_number.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	_button(pages,_t("Скачать отчёт","Download report"),func():command.emit("download_report",{}))
 
 func _build_main_menu() -> void:
-	_menu=PanelContainer.new(); _menu.name="MainMenu"; _menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); _menu.add_theme_stylebox_override("panel",_style(Color(0.045,0.075,0.09,0.74),Color(0,0,0,0),0,0)); _root.add_child(_menu)
-	var margin:=MarginContainer.new();margin.add_theme_constant_override("margin_left",76);margin.add_theme_constant_override("margin_right",76);_menu.add_child(margin)
-	var row:=HBoxContainer.new();margin.add_child(row)
-	var layout:=VBoxContainer.new(); layout.custom_minimum_size=Vector2(540,510);layout.size_flags_vertical=Control.SIZE_SHRINK_CENTER; layout.add_theme_constant_override("separation",18); row.add_child(layout)
-	_label(layout,"AI SIMS",78,TEXT)
-	_label(layout,_t("НАБЛЮДАЙ. МЕНЯЙ. УЗНАВАЙ.","OBSERVE. CHANGE. DISCOVER."),14,GOLD)
-	var intro:=_label(layout,_t("Маленькое общество. Разные желания.\nУ каждого — своя версия правды.","A small society. Different desires.\nEveryone has their own version of the truth."),21,Color("c7d4c9")); intro.custom_minimum_size=Vector2(540,82);intro.size.x=540;intro.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	var begin:=_button(layout,_t("Начать новую историю","Start a new story"),show_new_session);begin.custom_minimum_size.y=58;begin.add_theme_stylebox_override("normal",_style(GOLD,GOLD,8,15));begin.add_theme_color_override("font_color",INK);begin.add_theme_font_size_override("font_size",18)
-	var resume:=_button(layout,_t("Вернуться в мир","Return to the world"),func():show_main_menu(false));resume.custom_minimum_size.y=44;resume.flat=true;resume.alignment=HORIZONTAL_ALIGNMENT_LEFT;resume.add_theme_font_size_override("font_size",18)
-	var settings_button:=_button(layout,_t("Настройки и подключение AI","Settings & AI connection"),show_settings);settings_button.custom_minimum_size.y=44;settings_button.flat=true;settings_button.alignment=HORIZONTAL_ALIGNMENT_LEFT;settings_button.add_theme_font_size_override("font_size",17)
-	var help_button:=_button(layout,_t("Как играть","How to play"),func():_help_popup.popup_centered(Vector2i(780,640)));help_button.flat=true;help_button.alignment=HORIZONTAL_ALIGNMENT_LEFT
-	var spacer:=Control.new();spacer.size_flags_horizontal=Control.SIZE_EXPAND_FILL;row.add_child(spacer)
+	_menu=PanelContainer.new();_menu.name="MainMenu";_menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);_menu.add_theme_stylebox_override("panel",_style(INK,INK,0,0));_root.add_child(_menu)
+	var margin:=MarginContainer.new();_menu.add_child(margin)
+	for side in ["left","right"]:margin.add_theme_constant_override("margin_"+side,52)
+	for side in ["top","bottom"]:margin.add_theme_constant_override("margin_"+side,28)
+	var layout:=VBoxContainer.new();layout.add_theme_constant_override("separation",16);margin.add_child(layout)
+	var header:=HBoxContainer.new();layout.add_child(header)
+	_label(header,"AI Sims",46,CREAM).size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	_button(header,_t("Как играть","How to play"),func():_help_popup.popup_centered_clamped(Vector2i(800,680),0.92))
+	_button(header,_t("Настройки","Settings"),show_settings)
+	_continue_save=_button(header,_t("Продолжить сохранённую историю","Continue saved story"),func():show_main_menu(false);command.emit("load",{"slot":3}));_accent_button(_continue_save);_continue_save.hide()
+	_button(header,_t("Вернуться в мир","Return to world"),func():show_main_menu(false))
+	var divider:=HSeparator.new();layout.add_child(divider)
+	_label(layout,_t("Выберите историю","Choose a story"),32,CREAM)
+	_wrapped_label(layout,_t("Следите за людьми, читайте их переписку и меняйте условия одного дня.","Follow people, read their conversations and change the conditions of their day."),18,MUTED)
+	var cards:=HBoxContainer.new();cards.add_theme_constant_override("separation",18);cards.size_flags_vertical=Control.SIZE_EXPAND_FILL;layout.add_child(cards)
+	var art_path:="res://assets/release/ui/story_locations.png"
+	var art:Texture2D=load(art_path) if ResourceLoader.exists(art_path) else null
+	for index in 3:
+		var map_index:int=index
+		var panel:=_panel(cards,[Color("3e3938"),Color("2c3e39"),Color("263948")][index]);panel.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		var content:=VBoxContainer.new();content.add_theme_constant_override("separation",12);panel.add_child(content)
+		if art:
+			var atlas:=AtlasTexture.new();atlas.atlas=art;var slice:=art.get_width()/3.0;atlas.region=Rect2(slice*index,0,slice,art.get_height());atlas.filter_clip=true
+			var illustration:=TextureRect.new();illustration.texture=atlas;illustration.expand_mode=TextureRect.EXPAND_IGNORE_SIZE;illustration.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_COVERED;illustration.custom_minimum_size.y=110;illustration.size_flags_vertical=Control.SIZE_EXPAND_FILL;content.add_child(illustration)
+		_label(content,MAP_RU[index] if language=="ru" else MAP_EN[index],23,CREAM)
+		var description:=_wrapped_label(content,_map_description(index),17,MUTED);description.custom_minimum_size.y=84
+		var choose:=_button(content,_t("Открыть историю","Open story"),func():_map_choice.select(map_index);_update_story_cards();show_new_session());_accent_button(choose)
+	_wrapped_label(layout,_t("Начните без подключения или добавьте личный RouterAI в настройках.","Start offline or connect your own RouterAI account in Settings."),15,MUTED)
 
 func _build_new_dialog() -> void:
-	var content:=_dialog(_t("Новая история","New story")); _new_popup=content.popup
-	var box: VBoxContainer=content.box
-	_label(box,_t("Выберите место и исходные условия","Choose a place and initial conditions"),16,TEXT)
-	_map_choice=OptionButton.new(); box.add_child(_map_choice)
-	for index in 3: _map_choice.add_item(MAP_RU[index] if language=="ru" else MAP_EN[index]); _map_choice.set_item_metadata(index,MAP_IDS[index])
-	var description:=_label(box,_t("Закрытый блок: дефицит, общие пайки и неизвестные роли.\nЖилой комплекс: частная жизнь, торговля и общественные решения.\nСтанция: лаборатории, средства связи и опасные разногласия.","Closed Block: scarcity, shared rations and hidden roles.\nResidence: private lives, trade and collective decisions.\nResearch Station: laboratories, communications and dangerous disagreements."),15,MUTED); description.custom_minimum_size.x=650; description.size.x=650; description.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	_scenario_choice=OptionButton.new(); box.add_child(_scenario_choice)
-	for pair in [["scarcity","Дефицит и сотрудничество","Scarcity & cooperation"],["network","Связь и доверие","Communication & trust"],["survival","Выживание","Survival"],["sandbox","Свободная песочница","Open sandbox"]]: _scenario_choice.add_item(_t(pair[1],pair[2])); _scenario_choice.set_item_metadata(_scenario_choice.item_count-1,pair[0])
-	var count_row:=HBoxContainer.new(); box.add_child(count_row); _label(count_row,_t("Персонажей","People"),15,TEXT).size_flags_horizontal=Control.SIZE_EXPAND_FILL; _count=_spin(count_row,3,20,7,1)
-	var seed_row:=HBoxContainer.new(); box.add_child(seed_row); _label(seed_row,_t("Вариант исходной ситуации","Initial situation seed"),15,TEXT).size_flags_horizontal=Control.SIZE_EXPAND_FILL; _seed=_spin(seed_row,1,999999,1,1)
-	_label(box,_t("Без подключённого ключа используется явно обозначенная демонстрация.\nДля самостоятельных VLM-персонажей подключите RouterAI в настройках.","Without an enabled key, the clearly labelled demo is used.\nConnect RouterAI in settings for autonomous VLM characters."),14,MUTED)
-	_button(box,_t("Начать","Begin"),func():
-		_new_popup.hide(); show_main_menu(false)
+	var content:=_dialog(_t("Новая история","New story"));_new_popup=content.popup
+	var box:VBoxContainer=content.box
+	_label(box,_t("01  Выберите место","01  Choose a place"),16,SAGE)
+	_map_choice=OptionButton.new();box.add_child(_map_choice)
+	for index in 3:_map_choice.add_item(MAP_RU[index] if language=="ru" else MAP_EN[index]);_map_choice.set_item_metadata(index,MAP_IDS[index])
+	_map_choice.item_selected.connect(func(_index):_update_story_cards())
+	_story_description=_wrapped_label(box,"",17,CREAM);_story_description.custom_minimum_size.y=68
+	_label(box,_t("02  Как начнётся ваш день","02  How your day begins"),16,SAGE)
+	_scenario_choice=OptionButton.new();box.add_child(_scenario_choice)
+	for pair in [["episode","Сюжетный эпизод · 08:00–20:00","Story episode · 08:00–20:00"],["sandbox","Свободная песочница","Open sandbox"]]:_scenario_choice.add_item(_t(pair[1],pair[2]));_scenario_choice.set_item_metadata(_scenario_choice.item_count-1,pair[0])
+	_wrapped_label(box,_t("Один день, три главы и общий кризис. Участники действуют на основе собственного опыта; вам доступна вся истина мира.","One day, three chapters and a shared crisis. People act on their own experience; you can inspect the world's full truth."),15,MUTED)
+	var settings_row:=HBoxContainer.new();settings_row.add_theme_constant_override("separation",24);box.add_child(settings_row)
+	_label(settings_row,_t("Участников","People"),15,TEXT);_count=_spin(settings_row,3,20,8,1)
+	_label(settings_row,_t("Вариант истории","Story seed"),15,TEXT);_seed=_spin(settings_row,1,999999,1,1)
+	_wrapped_label(box,_t("По умолчанию — 8 участников. Можно выбрать от 3 до 20. Режим AI и бюджет настраиваются отдельно.","Eight people by default; choose between 3 and 20. AI mode and budget are configured separately."),14,MUTED)
+	var begin:=_button(box,_t("Начать этот день","Begin this day"),func():
+		_seen_chapter="";_debrief_key="";_new_popup.hide();show_main_menu(false)
 		command.emit("new_session",{"map_id":str(_map_choice.get_selected_metadata()),"count":int(_count.value),"scenario":str(_scenario_choice.get_selected_metadata()),"seed":int(_seed.value)}))
+	_accent_button(begin);_update_story_cards()
 
 func _build_settings_dialog() -> void:
 	var content:=_dialog(_t("Настройки","Settings")); _settings_popup=content.popup
@@ -494,9 +613,10 @@ func _build_settings_dialog() -> void:
 	var ai:=VBoxContainer.new();ai.name="AI";ai.add_theme_constant_override("separation",17);tabs.add_child(ai)
 	_label(ai,_t("Самостоятельные персонажи","Autonomous characters"),21,GOLD)
 	var note:=_label(ai,_t("Подключите личный аккаунт RouterAI.\nВы выбираете, сколько потратить на историю.","Connect your personal RouterAI account.\nYou choose how much to spend on a story."),16,TEXT);note.custom_minimum_size.x=560
+	_web_connect_button=_button(ai,_t("Подключить аккаунт в браузере","Connect account in browser"),func():command.emit("web_connect",{}));_web_connect_button.visible=OS.has_feature("web")
 	_live=CheckButton.new(); _live.text=_t("Включить AI","Enable AI"); ai.add_child(_live)
 	_label(ai,_t("Личный API-ключ","Personal API key"),13,MUTED)
-	_api_key=LineEdit.new(); _api_key.secret=true; _api_key.placeholder_text=_t("Ключ хранится на этом компьютере","The key is stored on this computer");_api_key.custom_minimum_size.y=42; ai.add_child(_api_key)
+	_api_key=LineEdit.new(); _api_key.secret=true; _api_key.placeholder_text=_t("Личный ключ · не передавайте его другим","Personal key · keep it private");_api_key.custom_minimum_size.y=42; ai.add_child(_api_key)
 	_model=LineEdit.new(); _model.text="~deepseek/deepseek-v4-flash-latest";ai.add_child(_model);_model.hide()
 	var advanced:=Button.new();advanced.text=_t("Выбрать другую модель ▾","Choose another model ▾");advanced.flat=true;advanced.alignment=HORIZONTAL_ALIGNMENT_LEFT;advanced.pressed.connect(func():_model.visible=not _model.visible);ai.add_child(advanced)
 	var budget_row:=HBoxContainer.new(); ai.add_child(budget_row); _label(budget_row,_t("Предел расходов, ₽","Spending limit, ₽"),15,TEXT).size_flags_horizontal=Control.SIZE_EXPAND_FILL; _budget=_spin(budget_row,0.1,1000,100,1)
@@ -520,34 +640,37 @@ func _build_settings_dialog() -> void:
 func _build_appearance_dialog() -> void:
 	var content:=_dialog(_t("Редактор персонажа","Character editor")); _appearance_popup=content.popup
 	var row_layout:=HBoxContainer.new();row_layout.add_theme_constant_override("separation",24);content.box.add_child(row_layout)
-	var preview_box:=VBoxContainer.new();row_layout.add_child(preview_box)
-	_character_preview=TextureRect.new();_character_preview.custom_minimum_size=Vector2(300,475);_character_preview.expand_mode=TextureRect.EXPAND_IGNORE_SIZE;_character_preview.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED;preview_box.add_child(_character_preview)
+	var preview_box:=VBoxContainer.new();preview_box.size_flags_vertical=Control.SIZE_EXPAND_FILL;row_layout.add_child(preview_box)
+	_character_preview=TextureRect.new();_character_preview.custom_minimum_size=Vector2(300,430);_character_preview.expand_mode=TextureRect.EXPAND_IGNORE_SIZE;_character_preview.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED;preview_box.add_child(_character_preview)
 	_character_preview.gui_input.connect(func(event):if is_instance_valid(_world):_world.handle_character_preview_input(event))
 	_label(preview_box,_t("Перетащите, чтобы повернуть.\nКолесо — приблизить.","Drag to rotate.\nWheel to zoom."),12,MUTED)
 	var box:=VBoxContainer.new();box.custom_minimum_size.x=480;box.add_theme_constant_override("separation",8);row_layout.add_child(box)
 	_label(box,_t("Образ выбранного персонажа","Selected character appearance"),18,GOLD)
 	_preset_choice=OptionButton.new();box.add_child(_preset_choice);_preset_choice.item_selected.connect(_load_appearance_preset)
 	_appearance_controls.clear()
-	for spec in [["height","Рост, см","Height, cm",152,213,1],["build","Телосложение","Build",0,100,1]]:
+	for spec in [["height","Рост, см","Height, cm",155,195,1],["build","Телосложение","Build",0,100,1]]:
 		var row:=HBoxContainer.new(); box.add_child(row); _label(row,_t(spec[1],spec[2]),15,TEXT).size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		_appearance_controls[spec[0]]=_spin(row,float(spec[3]),float(spec[4]),1,float(spec[5]))
-	var choices:Dictionary={"face":[_t("Классический A","Classic A"),_t("Классический B","Classic B"),_t("Округлый A","Round A"),_t("Округлый B","Round B"),_t("Узкий A","Narrow A"),_t("Узкий B","Narrow B")],"hair":[_t("Короткая","Short"),_t("Удлинённая","Medium"),_t("Волнистая","Wavy"),_t("Длинная","Long")],"outfit":[_t("Повседневный","Casual"),_t("Полосатый","Striped"),_t("Куртка","Jacket"),_t("Спортивный","Sport") ]}
-	for field in ["face","hair","outfit"]:
-		var row:=HBoxContainer.new();box.add_child(row);_label(row,{"face":_t("Лицо и основа тела","Face & body base"),"hair":_t("Причёска","Hairstyle"),"outfit":_t("Комплект одежды","Outfit")}[field],15,TEXT).size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	var choices:Dictionary={"face":[_t("Классический A","Classic A"),_t("Классический B","Classic B"),_t("Округлый A","Round A"),_t("Округлый B","Round B"),_t("Узкий A","Narrow A"),_t("Узкий B","Narrow B")],"hair":[_t("Пробор","Parted"),_t("Пучок","Bun"),_t("Очень короткая","Cropped"),_t("Длинная","Long"),_t("Каре","Bob"),_t("Собранная","Tied back")],"outfit":[_t("Повседневный","Casual"),_t("Худи","Hoodie"),_t("Рабочий","Workwear"),_t("Служебный","Service") ],"shoes":[_t("Кроссовки","Sneakers"),_t("Ботинки","Boots")]}
+	for field in ["face","hair","outfit","shoes"]:
+		var row:=HBoxContainer.new();box.add_child(row);_label(row,{"face":_t("Лицо и основа тела","Face & body base"),"hair":_t("Причёска","Hairstyle"),"outfit":_t("Комплект одежды","Outfit"),"shoes":_t("Обувь","Shoes")}[field],15,TEXT).size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		var choice:=OptionButton.new();choice.custom_minimum_size.x=185;row.add_child(choice)
 		for value in choices[field]:choice.add_item(str(value))
 		_appearance_controls[field]=choice
 	for spec in [["skin","Оттенок кожи","Skin tone","dfb89e"],["hair_color","Цвет волос","Hair color","4e3b32"],["color","Цвет одежды","Clothing color","83bfa9"]]:
 		var row:=HBoxContainer.new(); box.add_child(row); _label(row,_t(spec[1],spec[2]),15,TEXT).size_flags_horizontal=Control.SIZE_EXPAND_FILL
-		var picker:=ColorPickerButton.new(); picker.color=Color(spec[3]); picker.custom_minimum_size=Vector2(90,34); row.add_child(picker); _appearance_controls[spec[0]]=picker
+		var picker:=ColorPickerButton.new(); picker.color=Color(spec[3]); picker.custom_minimum_size=Vector2(90,44); row.add_child(picker); _appearance_controls[spec[0]]=picker
 	var preset:=LineEdit.new(); preset.placeholder_text=_t("Название сохраняемого образа (необязательно)","Appearance preset name (optional)"); box.add_child(preset); _appearance_controls.preset_name=preset
 	var note:=_label(box,_t("Предпросмотр не меняет мир. Применённый образ видят и персонажи.","Preview does not change the world. Applied appearance is visible to the characters."),14,MUTED); note.custom_minimum_size.x=480; note.size.x=480; note.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	var presets:=HBoxContainer.new();box.add_child(presets)
+	_button(presets,_t("Случайный образ","Randomize"),_randomize_appearance)
+	_button(presets,_t("Сбросить","Reset"),func():_open_appearance())
 	var footer:=HBoxContainer.new();box.add_child(footer)
 	var spacer:=Control.new();spacer.size_flags_horizontal=Control.SIZE_EXPAND_FILL;footer.add_child(spacer)
 	_button(footer,_t("Отмена","Cancel"),func():_appearance_popup.hide())
 	var apply:=_button(footer,_t("Применить образ","Apply appearance"),_apply_appearance);apply.add_theme_stylebox_override("normal",_style(GOLD,GOLD,7,12));apply.add_theme_color_override("font_color",INK)
 	for field in ["height","build"]:_appearance_controls[field].value_changed.connect(func(_value):_update_character_preview())
-	for field in ["face","hair","outfit"]:_appearance_controls[field].item_selected.connect(func(_index):_update_character_preview())
+	for field in ["face","hair","outfit","shoes"]:_appearance_controls[field].item_selected.connect(func(_index):_update_character_preview())
 	for field in ["skin","hair_color","color"]:_appearance_controls[field].color_changed.connect(func(_value):_update_character_preview())
 
 func _build_god_dialog() -> void:
@@ -601,7 +724,7 @@ func _build_help_dialog() -> void:
 	var content:=_dialog(_t("Добро пожаловать в AI Sims","Welcome to AI Sims")); _help_popup=content.popup
 	var box: VBoxContainer=content.box
 	var help:=_rich(box,460)
-	help.text=_t("Вы наблюдаете за людьми, которые действуют по собственному опыту.\n\n1. Создайте историю: карта, сценарий и от 3 до 20 персонажей.\n2. Подключите личный RouterAI или изучите механику в обозначенной демонстрации.\n3. Нажмите «Продолжить». Выбирайте людей слева и изучайте их жизнь, отношения и память.\n4. Переключитесь на личный вид: персонаж видит только свой кадр. Наблюдатель видит всю истину.\n5. Режим бога позволяет менять условия и людей. Вмешательства остаются в журнале.\n6. Сохраните историю и продолжите позже. Replay показывает записанное прошлое без новых решений AI.\n\nПробел — пауза. N — шаг. Tab — личный/общий вид. F — следить за выбранным. Колесо — масштаб, правая кнопка — вращение, средняя — перемещение камеры.\n\nДефицит заставляет договариваться. Сообщения могут быть подменены. Чужая уверенность не делает сведения истинными.","Observe people who act from their own experience.\n\n1. Create a story: choose a map, scenario and 3–20 people.\n2. Connect your RouterAI account, or learn the mechanics in the labelled demo.\n3. Continue the simulation. Select people and inspect life, relationships and memory.\n4. Switch to eye view: a person sees only their own image. The observer can inspect the full truth.\n5. God mode changes conditions and people; interventions remain in history.\n6. Save and continue later. Replay shows recorded history without new AI decisions.\n\nSpace pause. N step. Tab eye/observer view. F follow. Wheel zoom, right drag orbit, middle drag pan.\n\nScarcity creates reasons to cooperate. Messages can be altered. Confidence does not make a report true.")
+	help.text=_t("Вы наблюдаете за людьми, которые действуют по собственному опыту.\n\n1. Создайте историю: карта, сценарий и от 3 до 20 персонажей.\n2. Подключите личный RouterAI или изучите механику в обозначенной демонстрации.\n3. Нажмите «Продолжить». Выбирайте людей слева и изучайте их жизнь, отношения и память.\n4. Переключитесь на личный вид: персонаж видит только свой кадр. Наблюдатель видит всю истину.\n5. Режим бога позволяет менять условия и людей. Вмешательства остаются в журнале.\n6. Сохраните историю и продолжите позже. Replay показывает записанное прошлое без новых решений AI.\n\nПробел — пауза. N — шаг. V — личный/общий вид. F — следить за выбранным. Колесо — масштаб, правая кнопка — вращение, средняя — перемещение камеры.\n\nДефицит заставляет договариваться. Сообщения могут быть подменены. Чужая уверенность не делает сведения истинными.","Observe people who act from their own experience.\n\n1. Create a story: choose a map, scenario and 3–20 people.\n2. Connect your RouterAI account, or learn the mechanics in the labelled demo.\n3. Continue the simulation. Select people and inspect life, relationships and memory.\n4. Switch to eye view: a person sees only their own image. The observer can inspect the full truth.\n5. God mode changes conditions and people; interventions remain in history.\n6. Save and continue later. Replay shows recorded history without new AI decisions.\n\nSpace pause. N step. V eye/observer view. F follow. Wheel zoom, right drag orbit, middle drag pan.\n\nScarcity creates reasons to cooperate. Messages can be altered. Confidence does not make a report true.")
 
 func _build_group_dialog() -> void:
 	var content:=_dialog(_t("Новая группа","New group"));_group_popup=content.popup
@@ -624,15 +747,14 @@ func _open_group() -> void:
 
 func _refresh_person(agent: Dictionary) -> void:
 	_name.text=str(agent.get("name",selected_agent))
-	_name.add_theme_color_override("font_color",Color.from_string(str(agent.get("color","e1bd78")),GOLD).lightened(0.2))
+	_name.add_theme_color_override("font_color",CREAM)
 	_health.value=float(agent.get("health",100)); _hunger.value=float(agent.get("needs",{}).get("hunger",0)); _fatigue.value=float(agent.get("needs",{}).get("fatigue",0))
-	var profile: Dictionary=agent.get("profile",{})
 	var body: Dictionary=agent.get("body",{})
 	var condition: String=_t("В сознании","Conscious")
 	if not agent.get("alive",true): condition=_t("Погиб","Dead")
 	elif agent.get("sleeping",false): condition=_t("Спит","Sleeping")
 	elif agent.get("unconscious",false): condition=_t("Без сознания","Unconscious")
-	var lines: Array[String]=[condition+_t(" · боль %d"," · pain %d")%roundi(float(agent.get("pain",0))),str(profile.get("foundation","")),_t("Цель: ","Goal: ")+str(profile.get("goal","")),_t("Жетоны: ","Tokens: ")+str(agent.get("tokens",0)),"",_t("Инвентарь","Inventory")]
+	var lines: Array[String]=[condition+_t(" · боль %d"," · pain %d")%roundi(float(agent.get("pain",0))),_t("Жетоны: ","Tokens: ")+str(agent.get("tokens",0)),"",_t("Инвентарь","Inventory")]
 	for index in agent.get("inventory",[]).size():
 		var item: Dictionary=_state.get("items",{}).get(agent.inventory[index],{})
 		lines.append("• "+str(item.get("label",_t("Предмет","Item"))))
@@ -640,7 +762,8 @@ func _refresh_person(agent: Dictionary) -> void:
 	for limb in ["left_arm","right_arm","left_leg","right_leg"]:
 		if body.get(limb,"healthy")!="healthy": lines.append(_limb_name(limb)+": "+(_t("сломана","broken") if body.get(limb)=="broken" else _t("повреждена","injured")))
 	if body.get("blind",false): lines.append(_t("Зрение недоступно","Vision unavailable"))
-	lines.append("\n"+_t("Намерение: ","Intention: ")+_action_text(agent.get("last_action",{})))
+	var previous_action:=_action_text(agent.get("last_action",{}))
+	if not previous_action.is_empty():lines.append("\n"+_t("Последнее действие: ","Last action: ")+previous_action)
 	lines.append(str(agent.get("last_result",{}).get("message",agent.get("last_result",{}).get("reason",""))))
 	_life_text.text="\n".join(lines)
 	var previous_slot: int=_slot_index()
@@ -728,18 +851,54 @@ func _refresh_targets(observation: Dictionary) -> void:
 		if target.get("kind","")=="agent":viewers.append({"ref":str(target.get("ref","")),"name":str(target.get("label",_t("Человек","Person")))+_t(" · %.1f м"," · %.1f m")%float(target.get("distance",0))})
 	_populate_choice(_photo_target,viewers,"name",_t("Рядом никого не видно","No person in sight"))
 
+func _set_journal_page(page:int) -> void:
+	_journal_page=maxi(0,page);_last_journal_signature="";_refresh_journal(_state.get("events",[]))
+
 func _refresh_journal(events: Array) -> void:
-	var signature: String=str(events.size())+":"+str(events[-1].get("seq",-1) if not events.is_empty() else -1)+":"+str(_event_filter.selected)+":"+selected_agent
-	if signature==_last_journal_signature: return
+	if not is_instance_valid(_event_filter):return
+	var open:bool=_journal_panel.is_visible_in_tree()
+	var history:Array=_info.get("chronicle_events",events)
+	var signature:String="%s/%s/%s/%s/%s/%s/%s/%s/%s"%[_state.get("run_id",0),_state.get("map_id",""),history.size(),history[-1].get("seq",-1) if not history.is_empty() else -1,_event_filter.selected,selected_agent,_event_search.text,_journal_page,open]
+	if signature==_last_journal_signature:return
 	_last_journal_signature=signature
-	var lines: Array[String]=[]
-	for event in events.slice(maxi(0,events.size()-70)):
-		if _event_filter.selected==1 and str(event.get("actor",""))!=selected_agent: continue
-		var actor: String=str(event.get("actor",""))
-		var name: String=str(_state.get("agents",{}).get(actor,{}).get("name",_t("Мир","World")))
-		lines.append("%02d:%02d  %s  %s"%[int(fmod(float(event.get("minute",0)),1440.0)/60.0),int(fmod(float(event.get("minute",0)),60.0)),name,str(event.get("message",event.get("type","")))])
-	_journal.text="\n".join(lines) if not lines.is_empty() else _t("История начнётся с первых решений и последствий.","History begins with the first decisions and consequences.")
-	if is_instance_valid(_toast):_toast.text=lines[-1].left(110) if not lines.is_empty() else ""
+	_event_lookup.clear()
+	var grouped:Array=[]
+	var noise:Array=["wait","look","move","move_to","tick","route_progress"]
+	for raw in (history if open else events.slice(maxi(0,events.size()-80))):
+		if not raw is Dictionary:continue
+		var event:Dictionary=raw
+		_event_lookup[str(event.get("seq",0))]=event
+		var type:String=str(event.get("type",""));var actor:String=str(event.get("actor",""))
+		if not grouped.is_empty() and type in noise and type==str(grouped[-1].event.get("type","")) and actor==str(grouped[-1].event.get("actor","")) and bool(event.get("ok",true)):
+			grouped[-1].count+=1;grouped[-1].event=event
+		else:grouped.append({"event":event,"count":1})
+	for child in _live_events.get_children():child.queue_free()
+	var important:Array=grouped.filter(func(entry):return not str(entry.event.get("type","")) in noise or not bool(entry.event.get("ok",true)))
+	if important.is_empty():important=grouped
+	var recent:Array=important.slice(maxi(0,important.size()-2));recent.reverse()
+	for entry in recent:_event_button(_live_events,entry.event,int(entry.count))
+	if recent.is_empty():_wrapped_label(_live_events,_t("День ещё не начался. Продолжите историю, чтобы увидеть решения и последствия.","The day is yet to begin. Continue to see choices and consequences."),14,MUTED)
+	for child in _journal_rows.get_children():child.queue_free()
+	if not open:
+		_journal.text="";return
+	var lines:Array[String]=[];var search:String=_event_search.text.strip_edges().to_lower()
+	var matched:=0
+	grouped.reverse()
+	for entry in grouped:
+		var event:Dictionary=entry.event;var type:String=str(event.get("type",""));var actor:String=str(event.get("actor",""))
+		if _event_filter.selected==0 and type in noise and bool(event.get("ok",true)):continue
+		if _event_filter.selected==2 and actor!=selected_agent:continue
+		if _event_filter.selected==3 and not type in ["speak","message","send_message","receive_message","network","set_network","reply","create_topic","create_vote","vote"]:continue
+		var line:String=_event_caption(event,int(entry.count))
+		if not search.is_empty() and not search in line.to_lower():continue
+		if matched>=_journal_page*JOURNAL_PAGE_SIZE and lines.size()<JOURNAL_PAGE_SIZE:
+			lines.append(line);_event_button(_journal_rows,event,int(entry.count))
+		matched+=1
+	_journal.text="\n".join(lines)
+	_newer_events.disabled=_journal_page==0
+	_older_events.disabled=(_journal_page+1)*JOURNAL_PAGE_SIZE>=matched
+	_page_number.text="%d / %d"%[_journal_page+1,maxi(1,ceili(float(matched)/JOURNAL_PAGE_SIZE))]
+	if lines.is_empty():_wrapped_label(_journal_rows,_t("Нет событий по этому фильтру.","No events match this filter."),15,MUTED)
 
 func _rebuild_roster(agents: Dictionary) -> void:
 	for child in _agent_rows.get_children(): child.queue_free()
@@ -747,7 +906,7 @@ func _rebuild_roster(agents: Dictionary) -> void:
 	for key in agents:
 		var id: String=str(key)
 		var button:=_button(_agent_rows,str(agents[id].get("name",id)),func():_pick_person(id))
-		button.toggle_mode=true; button.alignment=HORIZONTAL_ALIGNMENT_LEFT; button.custom_minimum_size.y=55; button.add_theme_font_size_override("font_size",13)
+		button.toggle_mode=true; button.alignment=HORIZONTAL_ALIGNMENT_LEFT; button.custom_minimum_size.y=55; button.add_theme_font_size_override("font_size",14)
 		button.add_theme_color_override("font_color",Color.from_string(str(agents[id].get("color","e8ede7")),TEXT).lightened(0.2))
 		_agent_buttons[id]=button
 
@@ -846,6 +1005,8 @@ func _populate_choice(choice: OptionButton, entries: Array, label_key: String, e
 
 func _show_device_panel() -> void:
 	var app: String=str(_app.get_selected_metadata())
+	for button in _phone_apps:button.set_pressed_no_signal(str(button.get_meta("app_id",""))==app)
+	if is_instance_valid(_phone_app_heading):_phone_app_heading.text=_t("Личный телефон · ","Personal phone · ")+_app.get_item_text(_app.selected)
 	for key in _device_panels: _device_panels[key].visible=str(key)==app
 	_contact.visible=app in ["messages","game"]
 	_device_title.visible=app in ["forum","votes","pages"]
@@ -963,21 +1124,22 @@ func _open_appearance() -> void:
 	if not _state.get("agents",{}).has(selected_agent): return
 	var agent: Dictionary=_state.agents[selected_agent]
 	var appearance: Dictionary=agent.get("appearance",{})
-	for key in ["face","hair","outfit"]:_appearance_controls[key].select(clampi(int(appearance.get(key,0)),0,_appearance_controls[key].item_count-1))
+	for key in ["face","hair","outfit","shoes"]:_appearance_controls[key].select(clampi(int(appearance.get(key,0)),0,_appearance_controls[key].item_count-1))
 	_appearance_controls.height.value=float(appearance.get("height",1))*178.0
 	_appearance_controls.build.value=(float(appearance.get("build",1))-.85)/.35*100.0
 	for key in ["skin","hair_color"]: _appearance_controls[key].color=Color.from_string(str(appearance.get(key,"dfb89e" if key=="skin" else "4e3b32")),Color.WHITE)
 	_appearance_controls.color.color=Color.from_string(str(agent.get("color","83bfa9")),GREEN)
 	_preset_choice.clear();_preset_choice.add_item(_t("Сохранённые образы…","Saved appearances…"));_preset_choice.set_item_metadata(0,"")
 	for preset_name in _info.get("appearance_presets",{}):_preset_choice.add_item(str(preset_name));_preset_choice.set_item_metadata(_preset_choice.item_count-1,str(preset_name))
-	_appearance_popup.popup_centered_clamped(Vector2i(920,800),0.92)
+	_refresh_appearance_capabilities()
+	_appearance_popup.popup_centered_clamped(Vector2i(960,850),0.92)
 	_update_character_preview()
 
 func _load_appearance_preset(index:int) -> void:
 	var key:String=str(_preset_choice.get_item_metadata(index))
 	var preset:Variant=_info.get("appearance_presets",{}).get(key,{})
 	if not preset is Dictionary or preset.is_empty():return
-	for field in ["face","hair","outfit"]:
+	for field in ["face","hair","outfit","shoes"]:
 		if preset.has(field):_appearance_controls[field].select(clampi(int(preset[field]),0,_appearance_controls[field].item_count-1))
 	if preset.has("height"):_appearance_controls.height.value=float(preset.height)*178.0
 	if preset.has("build"):_appearance_controls.build.value=(float(preset.build)-.85)/.35*100.0
@@ -991,7 +1153,7 @@ func _apply_appearance() -> void:
 
 func _appearance_values() -> Dictionary:
 	var values: Dictionary={"id":selected_agent}
-	for key in ["face","hair","outfit"]: values[key]=int(_appearance_controls[key].selected)
+	for key in ["face","hair","outfit","shoes"]: values[key]=int(_appearance_controls[key].selected)
 	values.height=float(_appearance_controls.height.value)/178.0
 	values.build=.85+float(_appearance_controls.build.value)/100.0*.35
 	for key in ["skin","hair_color","color"]: values[key]=_appearance_controls[key].color.to_html(false)
@@ -1002,7 +1164,7 @@ func _update_character_preview() -> void:
 	if not is_instance_valid(_appearance_popup) or not _appearance_popup.visible or not _state.get("agents",{}).has(selected_agent) or not is_instance_valid(_world):return
 	var data:Dictionary=_state.agents[selected_agent].duplicate(true)
 	var values:Dictionary=_appearance_values()
-	for key in ["face","hair","outfit","height","build","skin","hair_color"]:data.appearance[key]=values[key]
+	for key in ["face","hair","outfit","shoes","height","build","skin","hair_color"]:data.appearance[key]=values[key]
 	data.color=values.color
 	_character_preview.texture=_world.preview_character(data)
 
@@ -1052,9 +1214,14 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	match event.keycode:
 		KEY_SPACE: command.emit("run",{"value":not _running})
 		KEY_N: command.emit("step",{})
-		KEY_TAB: _toggle_view()
+		KEY_V: _toggle_view()
 		KEY_F: if is_instance_valid(_world): _world.focus_agent()
-		KEY_ESCAPE: show_main_menu(not _menu_visible)
+		KEY_ESCAPE:
+			for child in _root.get_children():
+				if child is PopupPanel and child.visible:child.hide();get_viewport().set_input_as_handled();return
+			if _journal_panel.visible:_journal_panel.hide()
+			elif _roster_panel.visible:_roster_panel.hide()
+			else:show_main_menu(not _menu_visible)
 		_: return
 	get_viewport().set_input_as_handled()
 
@@ -1112,12 +1279,12 @@ func _tab(title: String) -> VBoxContainer:
 	return box
 
 func _dialog(title: String) -> Dictionary:
-	var popup:=PopupPanel.new(); popup.exclusive=false; popup.add_theme_stylebox_override("panel",_style(Color("20313a"),Color("526766"),14,20)); _root.add_child(popup)
+	var popup:=PopupPanel.new(); popup.exclusive=false; popup.add_theme_stylebox_override("panel",_style(Color("1d3342"),Color("587080"),20,22)); _root.add_child(popup)
 	popup.about_to_popup.connect(_before_popup)
 	popup.popup_hide.connect(func():_after_popup.call_deferred())
 	var scroll:=ScrollContainer.new(); scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED; popup.add_child(scroll)
 	var box:=VBoxContainer.new(); box.size_flags_horizontal=Control.SIZE_EXPAND_FILL; box.add_theme_constant_override("separation",13); scroll.add_child(box)
-	var header:=HBoxContainer.new(); box.add_child(header); _label(header,title,25,TEXT).size_flags_horizontal=Control.SIZE_EXPAND_FILL; _button(header,"×",func(): popup.hide())
+	var header:=HBoxContainer.new(); box.add_child(header); _label(header,title,25,CREAM).size_flags_horizontal=Control.SIZE_EXPAND_FILL; _button(header,"×",func(): popup.hide())
 	return {"popup":popup,"box":box}
 
 func _before_popup() -> void:
@@ -1142,30 +1309,323 @@ func _refresh_message_trace() -> void:
 	_trace_view.text="\n".join(lines)
 
 func _panel(parent: Node, color: Color) -> PanelContainer:
-	var panel:=PanelContainer.new(); panel.add_theme_stylebox_override("panel",_style(color,Color("32434a"),10,12)); parent.add_child(panel); return panel
+	var panel:=PanelContainer.new(); panel.add_theme_stylebox_override("panel",_style(color,Color("385262"),14,12)); parent.add_child(panel); return panel
 
 func _label(parent: Node, text: String, font_size: int=15, color: Color=TEXT) -> Label:
-	var label:=Label.new(); label.text=text; label.add_theme_font_size_override("font_size",font_size); label.add_theme_color_override("font_color",color); parent.add_child(label); return label
+	var label:=Label.new(); label.text=text; label.add_theme_font_size_override("font_size",maxi(14,font_size)); label.add_theme_color_override("font_color",color); parent.add_child(label); return label
 
 func _button(parent: Node, text: String, callback: Callable) -> Button:
-	var button:=Button.new(); button.text=text; button.mouse_default_cursor_shape=Control.CURSOR_POINTING_HAND; button.pressed.connect(callback); button.custom_minimum_size.y=34; parent.add_child(button); return button
+	var button:=Button.new(); button.text=text; button.mouse_default_cursor_shape=Control.CURSOR_POINTING_HAND; button.pressed.connect(callback); button.custom_minimum_size.y=44; parent.add_child(button); return button
 
 func _rich(parent: Node, height: float=150) -> RichTextLabel:
-	var rich:=RichTextLabel.new(); rich.custom_minimum_size.y=height; rich.size_flags_horizontal=Control.SIZE_EXPAND_FILL; rich.selection_enabled=true; rich.add_theme_font_size_override("normal_font_size",13); parent.add_child(rich); return rich
+	var rich:=RichTextLabel.new(); rich.custom_minimum_size.y=height; rich.size_flags_horizontal=Control.SIZE_EXPAND_FILL; rich.selection_enabled=true; rich.add_theme_font_size_override("normal_font_size",14); parent.add_child(rich); return rich
 
 func _spin(parent: Node, minimum: float, maximum: float, value: float, step: float) -> SpinBox:
 	var spin:=SpinBox.new(); spin.min_value=minimum; spin.max_value=maximum; spin.step=step; spin.value=value; spin.custom_minimum_size.x=100; parent.add_child(spin); return spin
 
 func _bar(parent: Node, title: String, color: Color) -> ProgressBar:
-	var row:=HBoxContainer.new(); parent.add_child(row); _label(row,title,12,MUTED).custom_minimum_size.x=85
+	var row:=HBoxContainer.new(); parent.add_child(row); _label(row,title,14,MUTED).custom_minimum_size.x=85
 	var bar:=ProgressBar.new(); bar.max_value=100; bar.show_percentage=true; bar.custom_minimum_size=Vector2(120,18); bar.size_flags_horizontal=Control.SIZE_EXPAND_FILL; bar.add_theme_stylebox_override("fill",_style(color,color,4,0)); row.add_child(bar); return bar
 
 func _style(color: Color, edge: Color, corner: int=8, padding: int=10) -> StyleBoxFlat:
 	var style:=StyleBoxFlat.new(); style.bg_color=color; style.border_color=edge; style.set_border_width_all(1); style.set_corner_radius_all(corner); style.content_margin_left=padding; style.content_margin_right=padding; style.content_margin_top=padding; style.content_margin_bottom=padding; return style
 
 func _theme() -> Theme:
-	var theme:=Theme.new(); theme.default_font_size=14
-	theme.set_color("font_color","Label",TEXT); theme.set_color("default_color","RichTextLabel",TEXT); theme.set_color("font_color","Button",TEXT); theme.set_color("font_hover_color","Button",Color.WHITE); theme.set_color("font_pressed_color","Button",GOLD)
-	theme.set_stylebox("normal","Button",_style(Color("293e46"),Color("435950"),6,10)); theme.set_stylebox("hover","Button",_style(Color("3b5758"),GREEN,6,10)); theme.set_stylebox("pressed","Button",_style(Color("405e56"),GOLD,6,10)); theme.set_stylebox("focus","Button",_style(Color(0,0,0,0),GOLD,6,10))
-	theme.set_stylebox("normal","LineEdit",_style(Color("13242d"),Color("3c5358"),5,9)); theme.set_stylebox("normal","TextEdit",_style(Color("13242d"),Color("3c5358"),5,9)); theme.set_stylebox("panel","TabContainer",_style(Color("192932"),Color("192932"),0,3)); theme.set_stylebox("tab_selected","TabContainer",_style(Color("354c4d"),Color("354c4d"),5,7)); theme.set_stylebox("tab_unselected","TabContainer",_style(Color("20323b"),Color("20323b"),5,7)); theme.set_stylebox("background","ProgressBar",_style(Color("31454c"),Color("31454c"),4,0))
+	var theme:=Theme.new();theme.default_font_size=14
+	for type in ["Label","Button","OptionButton","MenuButton","CheckButton","LineEdit","TextEdit","TabBar","PopupMenu"]:theme.set_color("font_color",type,CREAM)
+	theme.set_color("default_color","RichTextLabel",CREAM)
+	for type in ["Button","OptionButton","MenuButton"]:
+		theme.set_stylebox("normal",type,_style(Color("2b4655"),Color("4b6570"),10,10));theme.set_stylebox("hover",type,_style(Color("3a5c67"),SAGE,10,10));theme.set_stylebox("pressed",type,_style(Color("47675f"),SAGE,10,10));theme.set_stylebox("focus",type,_style(Color(0,0,0,0),GOLD,10,10));theme.set_color("font_hover_color",type,Color.WHITE);theme.set_color("font_pressed_color",type,CREAM);theme.set_constant("outline_size",type,0)
+	for type in ["LineEdit","TextEdit"]:
+		theme.set_stylebox("normal",type,_style(Color("122936"),Color("526d78"),9,12));theme.set_stylebox("focus",type,_style(Color("183442"),SAGE,9,12));theme.set_color("font_placeholder_color",type,MUTED)
+	theme.set_stylebox("panel","PopupMenu",_style(Color("203b4a"),Color("587080"),10,10));theme.set_constant("v_separation","PopupMenu",14)
+	theme.set_stylebox("panel","TabContainer",_style(Color("1d3342"),Color("1d3342"),0,3))
+	for type in ["TabContainer","TabBar"]:
+		theme.set_stylebox("tab_selected",type,_style(Color("3c5a60"),SAGE,7,9));theme.set_stylebox("tab_unselected",type,_style(Color("253f4d"),Color("253f4d"),7,9));theme.set_color("font_selected_color",type,CREAM);theme.set_color("font_unselected_color",type,MUTED)
+	theme.set_stylebox("background","ProgressBar",_style(Color("314c58"),Color("314c58"),4,0));theme.set_stylebox("fill","ProgressBar",_style(SAGE,SAGE,4,0))
+	theme.set_constant("minimum_grab_thickness","VScrollBar",8)
 	return theme
+
+func _wrapped_label(parent:Node,text:String,font_size:int=15,color:Color=TEXT)->Label:
+	var label:=_label(parent,text,font_size,color);label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	return label
+
+func _accent_button(button:Button)->void:
+	button.add_theme_stylebox_override("normal",_style(SAGE,SAGE,10,12));button.add_theme_stylebox_override("hover",_style(CREAM,CREAM,10,12));button.add_theme_color_override("font_color",INK);button.add_theme_color_override("font_hover_color",INK);button.add_theme_font_size_override("font_size",17)
+
+func _map_description(index:int)->String:
+	return [
+		_t("Поставка задерживается. Хватит ли запасов до вечера, и кто откроет резерв?","The delivery is late. Will the rations last until evening, and who will open the reserve?"),
+		_t("В лавке дорожает еда. Трое соседей остались без денег и зависят от решений остальных.","Food prices are rising. Neighbours without money depend on what the others decide."),
+		_t("Приближается шторм. Два сообщения указывают разные места сбора, а одному участнику нужна помощь.","A storm is coming. Two messages name different assembly points, and one person needs help.")
+	][clampi(index,0,2)]
+
+func _update_story_cards()->void:
+	if is_instance_valid(_story_description):_story_description.text=_map_description(_map_choice.selected)
+
+func _event_caption(event:Dictionary,count:int=1)->String:
+	var minute:float=float(event.get("minute",0))+float(_state.get("scenario_state",{}).get("display_start_minute",_state.get("display_start_minute",0)))
+	var actor:String=str(event.get("actor",""));var person:String=str(_state.get("agents",{}).get(actor,{}).get("name",_t("Мир","World")))
+	var message:String=str(event.get("message_en",event.get("message",""))) if language=="en" else str(event.get("message",event.get("type","")))
+	message=message.replace("\n"," ")
+	if language=="en" and event.get("type","")=="session_started":
+		var index:int=maxi(0,MAP_IDS.find(str(_state.get("map_id","closed_block"))))
+		message="New session in %s with %d residents."%[MAP_EN[index],_state.get("agents",{}).size()]
+	return "%02d:%02d  ·  %s  ·  %s%s"%[int(fmod(minute,1440.0)/60.0),int(fmod(minute,60.0)),person,message,("  ×%d"%count) if count>1 else ""]
+
+func _event_button(parent:Node,event:Dictionary,count:int)->Button:
+	var button:=_button(parent,_event_caption(event,count),func():
+		var payload:Dictionary={"seq":int(event.get("seq",0)),"actor":str(event.get("actor",""))}
+		var details:Dictionary=event.get("details",{})
+		if event.has("position"):payload.position=event.position
+		elif details.has("position"):payload.position=details.position
+		if _state.get("agents",{}).has(payload.actor):_pick_person(str(payload.actor))
+		command.emit("focus_event",payload))
+	button.alignment=HORIZONTAL_ALIGNMENT_LEFT;button.clip_text=true;button.tooltip_text=_event_caption(event,count);button.size_flags_horizontal=Control.SIZE_EXPAND_FILL;button.custom_minimum_size.y=36
+	var location:String=_place_name(event.get("place",{}))
+	if not location.is_empty():button.tooltip_text+="\n"+_t("Место · ","Place · ")+location
+	var cause:Variant=event.get("cause")
+	if (cause is int or cause is float) and _event_lookup.has(str(int(cause))):
+		button.tooltip_text+="\n"+_t("Причина · ","Cause · ")+_event_caption(_event_lookup[str(int(cause))],1)
+	button.add_theme_stylebox_override("normal",_style(Color("263e4b"),Color("263e4b"),7,8))
+	if not bool(event.get("ok",true)):button.add_theme_color_override("font_color",CORAL)
+	return button
+
+func _refresh_alpha_state()->void:
+	var scenario:Dictionary=_state.get("scenario_state",{})
+	var map_index:int=MAP_IDS.find(str(_state.get("map_id","closed_block")));map_index=maxi(0,map_index)
+	_scenario_title.text=_story_value(scenario,"title",MAP_RU[map_index] if language=="ru" else MAP_EN[map_index])
+	_phase_label.text=_t("ГЛАВА %d / 3","CHAPTER %d / 3")%int(scenario.get("phase",1)) if not scenario.is_empty() else _t("ПЕСОЧНИЦА","SANDBOX")
+	_problem.text=_story_value(scenario,"current_problem",_t("Наблюдайте за людьми и их решениями.","Observe people and their choices."));_problem.tooltip_text=_problem.text
+	var actor:Dictionary=_state.get("agents",{}).get(selected_agent,{})
+	var activity:Dictionary=actor.get("activity_status",{}).duplicate(true)
+	var runtime_status:Variant=_info.get("agent_statuses",{}).get(selected_agent,{})
+	if runtime_status is Dictionary:activity.merge(runtime_status,true)
+	_card_activity=activity
+	var action_value:Variant=activity.get("activity",actor.get("last_action",{}))
+	var action:String=_action_text(action_value) if action_value is Dictionary else _activity_name(str(action_value))
+	if action.is_empty():action=_t("Наблюдает за миром","Observing the world")
+	var target:String=str(activity.get("target",""))
+	_activity.text=action+(" · "+target if not target.is_empty() else "")
+	var location:String=_place_name(activity.get("place",{}))
+	if not location.is_empty():_activity.text+=" · "+location
+	var intent_value:Variant=activity.get("declared_intent",activity.get("intent",{}))
+	var intention:String=_action_text(intent_value) if intent_value is Dictionary else str(intent_value)
+	_intent.text=(_t("Намерение: ","Intention: ")+intention) if not intention.is_empty() else (_t("Личная цель: ","Personal goal: ")+_profile_goal(str(actor.get("profile",{}).get("goal",_t("Не задана","Not set")))))
+	_intent.tooltip_text=_t("Заявленное намерение или заданная цель. Это не скрытые рассуждения модели.","Declared intention or configured goal. This is not hidden model reasoning.")
+	var blocked:String=str(activity.get("blocked_reason",""))
+	var ai_state:String=str(activity.get("ai_state",activity.get("decision_state","")))
+	_obstacle.text=(_t("Препятствие: ","Blocked: ")+blocked) if not blocked.is_empty() else (_t("Ожидает решения AI","Waiting for an AI decision") if ai_state in ["waiting","queued","requesting","thinking","pending"] else _t("",""))
+	_obstacle.visible=not _obstacle.text.is_empty()
+	var progress:float=float(activity.get("progress",-1));_activity_progress.visible=progress>=0;_activity_progress.value=progress*100.0 if progress<=1.0 else progress
+	var signature:String=selected_agent+JSON.stringify(actor.get("appearance",{}))+str(actor.get("color",""))
+	if signature!=_portrait_signature and is_instance_valid(_world) and _world.has_method("character_portrait"):
+		var portrait:Texture2D=_world.character_portrait(actor)
+		_portrait_image.texture=portrait
+		if portrait!=null:_portrait_signature=signature
+	var connection:Dictionary=_info.get("connection",{});var enabled:bool=bool(connection.get("enabled",false)) or _info.get("mode","")=="real_vlm"
+	var waiting:bool=bool(connection.get("waiting",false)) or bool(_info.get("waiting",false))
+	var states:Variant=_info.get("decision_states",{})
+	_retry_decision.visible=ai_state=="error"
+	if states is Dictionary:
+		var decision:Variant=states.get(selected_agent,{})
+		if decision is Dictionary and str(decision.get("state",""))=="error":_retry_decision.show()
+		for value in states.values():
+			var state_name:String=str(value.get("state","")) if value is Dictionary else str(value)
+			if state_name in ["waiting","queued","requesting","pending","thinking"]:waiting=true
+	var error_text:String=str(connection.get("error",connection.get("last_error","")))
+	var pause_reason:String=str(connection.get("pause_reason","")).strip_edges()
+	_status.tooltip_text=""
+	if not pause_reason.is_empty():_status.text=pause_reason;_status.tooltip_text=pause_reason;_status.add_theme_color_override("font_color",CORAL)
+	elif not error_text.is_empty():_status.text=_t("Ошибка подключения · откройте настройки","Connection error · open settings");_status.tooltip_text=error_text;_status.add_theme_color_override("font_color",CORAL)
+	elif not _running:_status.text=_t("Пауза · время остановлено","Paused · time is stopped");_status.add_theme_color_override("font_color",CREAM)
+	elif waiting:_status.text=_t("Ожидание AI · решения готовятся","Waiting for AI · decisions are pending");_status.add_theme_color_override("font_color",GOLD)
+	else:_status.text=_t("История развивается","The story is unfolding");_status.add_theme_color_override("font_color",SAGE)
+	var missing_key:bool=enabled and not bool(connection.get("enabled",false)) and not bool(connection.get("has_key",false))
+	_mode.text=_t("RouterAI · требуется подключение","RouterAI · connection required") if missing_key else (_t("RouterAI · подключено","RouterAI · connected") if enabled else _t("ДЕМО · без AI","DEMO · no AI"))
+	_mode.add_theme_color_override("font_color",SAGE if enabled and not missing_key else CORAL)
+	var effective:float=float(_info.get("effective_speed",_info.get("settings",{}).get("speed",1)))
+	_effective_speed.text=_t("Темп %.1f×","Pace %.1f×")%effective
+	_refresh_districts()
+
+const PLACES_EN={
+ "Северная спальня": "North dormitory",
+ "Кухня и столовая": "Kitchen and dining room",
+ "Медпункт": "Infirmary",
+ "Погрузочный шлюз": "Loading bay",
+ "Выдача пайков": "Rations desk",
+ "Резерв блока": "Block reserves",
+ "Комната связи": "Communications room",
+ "Южная спальня": "South dormitory",
+ "Общий зал": "Common room",
+ "Мастерская": "Workshop",
+ "Обменный пункт": "Exchange",
+ "Архив блока": "Block archives",
+ "Дом у часов": "Clock House",
+ "Дом с садом": "Garden House",
+ "Почтовая": "Post office",
+ "Общая кладовая": "Community stores",
+ "Общественная кухня": "Communal kitchen",
+ "Зал собраний": "Assembly hall",
+ "Аптечный пункт": "Pharmacy",
+ "Доска связи": "Noticeboard",
+ "Продуктовая лавка": "Grocery",
+ "Пункт оборудования": "Equipment desk",
+ "Читальный зал": "Reading room",
+ "Спальные каюты": "Sleeping quarters",
+ "Камбуз": "Galley",
+ "Комната отдыха": "Recreation room",
+ "Медицинский блок": "Medical bay",
+ "Лаборатория": "Laboratory",
+ "Архив наблюдений": "Observation archive",
+ "Наблюдательная": "Observation deck",
+ "Узел связи": "Comms hub",
+ "Склад экспедиции": "Expedition stores",
+ "Северный шлюз": "North airlock",
+ "Южный сборный пункт": "South muster point",
+ "Жилое крыло": "Residential wing",
+ "Общий двор": "Courtyard",
+ "Снабжение и связь": "Supply and comms",
+ "Жилые дворы": "Residential courts",
+ "Общественный проспект": "Civic avenue",
+ "Торговая улица": "Market street",
+ "Жилой модуль": "Habitat module",
+ "Исследовательский модуль": "Research module",
+ "Связь и эвакуация": "Comms and evacuation",
+ "Двор и переходы": "Courtyard and passages"
+}
+const GOALS_EN={
+ "Познакомиться с людьми, узнать их нужды и предложить взаимопомощь.": "Meet people, learn what they need and offer mutual support.",
+ "Лично проверить правила выдачи и помочь распределить ограниченные запасы.": "Check the ration rules in person and help share limited supplies.",
+ "Найти узел связи, проверить важные сведения и поддерживать доступную связь.": "Find the comms hub, verify important news and keep channels open.",
+ "Найти медицинские средства, осмотреть нуждающихся и предложить помощь.": "Find medical supplies, examine those in need and offer help.",
+ "Изучить местные документы, сравнивать независимые источники и сохранять находки.": "Read local documents, compare independent sources and keep a record.",
+ "Знакомиться лично, передавать проверенные новости и помогать договариваться.": "Meet people, share verified news and help them reach agreements.",
+ "Проверить ассортимент магазина, искать честные сделки и беречь собственные средства.": "Check the shop, find fair trades and look after personal funds.",
+ "Осмотреть новое место, найти пищу, познакомиться и попросить помощь при необходимости.": "Explore the new place, find food, meet others and ask for help when needed."
+}
+
+func _place_name(place:Dictionary)->String:
+	var label:String=str(place.get("label",place.get("id","")))
+	return str(PLACES_EN.get(label,label)) if language=="en" else label
+
+func _profile_goal(goal:String)->String:
+	if language=="ru":return goal
+	var station_duty:=" До конца смены найти действующее место сбора, проверить объявление лично и добраться туда; при необходимости просить помощь."
+	if goal.ends_with(station_duty):
+		return str(GOALS_EN.get(goal.trim_suffix(station_duty),goal.trim_suffix(station_duty)))+" Verify the assembly notice in person and reach the correct muster point by the end of the shift. Ask for help if needed."
+	return str(GOALS_EN.get(goal,goal))
+
+func _story_value(record:Dictionary, field:String, fallback:String="") -> String:
+	return str(record.get(field+"_en",record.get(field,fallback))) if language=="en" else str(record.get(field,fallback))
+
+func _resize_canvas() -> void:
+	if is_instance_valid(_central) and is_instance_valid(_world) and _world.has_method("set_display_size"):
+		_world.set_display_size(Vector2i(_central.size*_central.get_screen_transform().get_scale()))
+
+func _portrait_ready(signature:String, texture:Texture2D) -> void:
+	var actor:Dictionary=_state.get("agents",{}).get(selected_agent,{})
+	if signature==JSON.stringify(actor.get("appearance",{}))+str(actor.get("color","")) and is_instance_valid(_portrait_image):
+		_portrait_image.texture=texture
+		_portrait_signature=selected_agent+signature
+
+func _activity_name(value:String)->String:
+	var names:Dictionary={"idle":_t("Осматривается","Looking around"),"moving":_t("Идёт к цели","Walking to a destination"),"walking":_t("Идёт","Walking"),"waiting":_t("Ждёт","Waiting"),"sleeping":_t("Спит","Sleeping"),"resting":_t("Отдыхает","Resting"),"eating":_t("Ест","Eating"),"talking":_t("Разговаривает","Talking"),"unconscious":_t("Без сознания","Unconscious"),"dead":_t("Погиб","Dead")}
+	return str(names.get(value,_action_text({"type":value})))
+
+func _build_map_dialog()->void:
+	var content:=_dialog(_t("Карта и места","Map & places"));_detail_popup=content.popup
+	_wrapped_label(content.box,_t("Выберите район, чтобы переместить камеру. Полная карта доступна наблюдателю.","Choose a district to move the camera. The full map is available to the observer."),15,MUTED)
+	_district_choice=OptionButton.new();content.box.add_child(_district_choice)
+	var focus:=_button(content.box,_t("Показать на карте","Show on map"),func():
+		if _district_choice.item_count>0:command.emit("focus_event",{"seq":-1,"actor":"","position":_district_choice.get_selected_metadata()});_detail_popup.hide())
+	_accent_button(focus)
+	_button(content.box,_t("Следить за выбранным героем","Follow selected person"),func():if is_instance_valid(_world):_world.focus_agent();_detail_popup.hide())
+
+func _refresh_districts()->void:
+	var geometry:Dictionary=_state.get("geometry",{});var entries:Array=geometry.get("districts",[]).duplicate(true)
+	entries.append_array(geometry.get("landmarks",[]))
+	if entries.is_empty():entries=geometry.get("rooms",[])
+	var signature:String=JSON.stringify(entries)
+	if signature==_district_signature:return
+	_district_signature=signature;_district_choice.clear()
+	for entry in entries:
+		_district_choice.add_item(_place_name(entry));_district_choice.set_item_metadata(_district_choice.item_count-1,entry.get("center",[0,0]))
+
+func _show_map_navigation()->void:
+	_refresh_districts();_detail_popup.popup_centered_clamped(Vector2i(620,370),0.9)
+
+func _build_chapter_dialog()->void:
+	var content:=_dialog(_t("Ваша история","Your story"));_chapter_popup=content.popup
+	_chapter_title=_wrapped_label(content.box,"",28,CREAM)
+	_chapter_text=_rich(content.box,170);_chapter_text.fit_content=true;_chapter_text.scroll_active=false
+	_intervention_box=VBoxContainer.new();_intervention_box.add_theme_constant_override("separation",8);content.box.add_child(_intervention_box)
+	_chapter_continue=_button(content.box,_t("Продолжить наблюдение","Continue observing"),func():
+		_chapter_popup.hide()
+		if not _running and not bool(_state.get("scenario_state",{}).get("completed",false)):command.emit("run",{"value":true}))
+	_accent_button(_chapter_continue)
+
+func _refresh_chapter()->void:
+	if _menu_visible or _info.get("replaying",false) or not is_instance_valid(_chapter_popup):return
+	var scenario:Dictionary=_state.get("scenario_state",{})
+	if scenario.is_empty():return
+	var key:String=str(_state.get("run_id",0))+":"+str(scenario.get("phase",1))
+	var done:bool=bool(scenario.get("completed",false))
+	if done and _debrief_key!=str(_state.get("run_id",0)):
+		_debrief_key=str(_state.get("run_id",0));_show_chapter(scenario,true)
+	elif not done and key!=_seen_chapter:
+		_seen_chapter=key;_show_chapter(scenario,false)
+
+func _show_chapter(scenario:Dictionary,debrief:bool)->void:
+	for child in _intervention_box.get_children():child.queue_free()
+	if debrief:
+		_chapter_title.text=_story_value(scenario.get("outcome",{}),"title",_t("День завершён","The day is complete"))
+		var lines:Array[String]=[]
+		for line in scenario.get("debrief_en" if language=="en" and scenario.has("debrief_en") else "debrief",[]):lines.append(str(line))
+		_chapter_text.text="\n\n".join(lines)
+		_button(_intervention_box,_t("Скачать отчёт","Download report"),func():command.emit("download_report",{}))
+		_button(_intervention_box,_t("Продолжить в песочнице","Continue in sandbox"),func():command.emit("continue_sandbox",{});_chapter_popup.hide())
+		_chapter_continue.text=_t("Вернуться в мир","Return to the world")
+	else:
+		_chapter_title.text=_t("Глава %d · ","Chapter %d · ")%int(scenario.get("phase",1))+_story_value(scenario,"phase_title")
+		_chapter_text.text=_story_value(scenario,"description")+"\n\n"+_story_value(scenario,"current_problem")
+		for intervention in scenario.get("interventions",[]):
+			if bool(intervention.get("used",false)):continue
+			var choice:Dictionary=intervention
+			var message:LineEdit
+			if choice.id=="announcement":
+				message=LineEdit.new();message.max_length=280;message.placeholder_text=_t("Текст публичного объявления","Public announcement text");_intervention_box.add_child(message)
+			var button:=_button(_intervention_box,_story_value(choice,"title"),func():
+				var payload:Dictionary={"id":choice.id}
+				if message!=null:payload.text=message.text.strip_edges()
+				command.emit("scenario_intervention",payload);_chapter_popup.hide())
+			if message!=null:
+				button.disabled=true
+				message.text_changed.connect(func(value):button.disabled=value.strip_edges().is_empty())
+			button.tooltip_text=_story_value(choice,"description")
+		_chapter_continue.text=_t("Начать наблюдение","Start observing") if int(scenario.get("phase",1))==1 else _t("Продолжить наблюдение","Continue observing")
+	_chapter_popup.popup_centered_clamped(Vector2i(760,680),0.9)
+
+func _refresh_appearance_capabilities()->void:
+	var capabilities:Dictionary={"faces":6,"hairs":4,"outfits":4,"shoes":0}
+	if is_instance_valid(_world) and _world.has_method("appearance_capabilities"):capabilities.merge(_world.appearance_capabilities(),true)
+	for pair in [["face","faces"],["hair","hairs"],["outfit","outfits"],["shoes","shoes"]]:
+		var choice:OptionButton=_appearance_controls[pair[0]];var count:int=int(capabilities.get(pair[1],0))
+		for index in choice.item_count:choice.set_item_disabled(index,index>=count)
+		choice.disabled=count<=0
+		if choice.selected>=count and count>0:choice.select(0)
+		choice.tooltip_text=_t("Доступно вариантов: %d","Available options: %d")%count
+
+func _randomize_appearance()->void:
+	_refresh_appearance_capabilities()
+	for field in ["face","hair","outfit","shoes"]:
+		var choice:OptionButton=_appearance_controls[field];var available:Array=[]
+		for index in choice.item_count:
+			if not choice.is_item_disabled(index):available.append(index)
+		if not available.is_empty():choice.select(available.pick_random())
+	_appearance_controls.height.value=randi_range(155,195)
+	_appearance_controls.build.value=[20,50,80].pick_random()
+	_appearance_controls.skin.color=Color(["f0d4bd","e1b994","c99372","a96d50","81523f","573b32","d8b4a2","c5a883"].pick_random())
+	_appearance_controls.hair_color.color=Color(["27252a","49382f","79513b","b18552","d1b671","863e35","b4a8a1","424b62"].pick_random())
+	_appearance_controls.color.color=Color(["9fcbb5","ee947f","e1bd78","82aabc","aca3cb","e6ddc7","608c84","bb7885"].pick_random())
+	_update_character_preview()

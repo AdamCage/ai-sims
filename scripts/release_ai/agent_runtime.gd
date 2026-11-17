@@ -35,6 +35,7 @@ var _last_error: String = ""
 var _last_provider: Dictionary = {}
 var _pending: Dictionary = {}
 var _mode: String = "demo"
+var demo_language := "ru"
 var _config: Dictionary = {}
 var _ledger: RefCounted
 var _memory = Memory.new()
@@ -45,6 +46,8 @@ var _next_trait_review: float = 1440.0 * 30.0
 var _next_memory_attempt: float = 0.0
 var _calls_started: int = 0
 var _fixture_calls: int = 0
+var declared_intent: String = ""
+var last_plan: Array = []
 
 func _init() -> void:
 	add_child(_transport)
@@ -66,6 +69,8 @@ func reset(new_run: int) -> void:
 	_last_observation.clear()
 	_last_action.clear()
 	_last_error = ""
+	declared_intent = ""
+	last_plan.clear()
 	_next_memory_attempt = 0.0
 	_rng.seed = absi(agent_id.hash()) + maxi(1,new_run)
 	_next_trait_review = _draw_review_days() * 1440.0
@@ -166,8 +171,9 @@ func build_payload(observation: Dictionary, png: PackedByteArray) -> Dictionary:
 			content.append({"type":"text","text":"Your own PAST visual memory from game minute %.2f; this is not the current scene." % float(candidate.minute)})
 			content.append({"type":"image_url","image_url":{"url":"data:image/png;base64," + Marshalls.raw_to_base64(bytes)}})
 			break
-	var payload := {"model":_transport.model,"temperature":0.35,"max_tokens":700,
-		"messages":[{"role":"system","content":EXTRA_INSTRUCTIONS + "\n" + Catalog.instructions()},{"role":"user","content":content}]}
+	var planning := "\nReturn strict JSON, either one catalog action or {\"intent\":\"a short first-person description of your immediate goal\",\"steps\":[action,...]}. Prefer a useful plan of 1–4 actions, at most 60 game minutes. Each action must follow the catalog. Only use targets visible in THIS observation and your own inventory slots. References remain bound to this observation; never invent future visual references. After take, buy, request_ration, a successful ration-terminal interact or an equipment join_queue, a later step may use \"slot\":\"received\" for that exact newly obtained own item. Other numeric slots refer to the original inventory. Stop the plan if a step fails. Plans are intentions, not evidence of future success. Do not include reasoning or hidden chain-of-thought."
+	var payload := {"model":_transport.model,"temperature":0.35,"max_tokens":1000,
+		"messages":[{"role":"system","content":EXTRA_INSTRUCTIONS + "\n" + Catalog.instructions() + planning},{"role":"user","content":content}]}
 	if not _transport.provider_only().is_empty():
 		payload["provider"] = {"only":_transport.provider_only(),"allow_fallbacks":false}
 	payload.merge(_config.get("generation_parameters",{}),true)
@@ -179,7 +185,39 @@ func parse_response(text: String) -> Dictionary:
 	var parser := JSON.new()
 	if parser.parse(text) != OK:
 		return {"ok":false,"action":{"type":"wait"},"error":"Action response is not strict JSON"}
-	return Catalog.validate(parser.data)
+	if not parser.data is Dictionary:
+		return {"ok":false,"action":{"type":"wait"},"error":"Plan must be a JSON object"}
+	var data: Dictionary = parser.data
+	if not data.has("steps"):
+		var single: Dictionary = Catalog.validate(data)
+		if single.ok:
+			single["steps"] = [single.action.duplicate(true)]
+			single["intent"] = ""
+		return single
+	if data.keys().any(func(key): return key not in ["intent","steps"]):
+		return {"ok":false,"action":{"type":"wait"},"error":"Unknown plan field"}
+	if not data.steps is Array or data.steps.is_empty() or data.steps.size()>4 or not data.get("intent","") is String or str(data.get("intent","")).length()>240:
+		return {"ok":false,"action":{"type":"wait"},"error":"Plan requires 1–4 actions and a short intent"}
+	var steps: Array = []
+	var can_receive := false
+	var duration := 0.0
+	for raw in data.steps:
+		if not raw is Dictionary:
+			return {"ok":false,"action":{"type":"wait"},"error":"Plan action must be an object"}
+		var candidate: Dictionary = raw.duplicate(true)
+		var received: bool = candidate.get("slot",null) is String and candidate.get("slot")=="received"
+		if received:
+			if not can_receive:
+				return {"ok":false,"action":{"type":"wait"},"error":"No preceding action can supply this inventory item"}
+			candidate.slot=0
+		var checked: Dictionary = Catalog.validate(candidate)
+		if not checked.ok:return checked
+		if received:checked.action.slot="received"
+		steps.append(checked.action)
+		duration+=float(candidate.get("minutes",0.0))
+		if candidate.type in ["take","buy","request_ration","interact","join_queue"]:can_receive=true
+	if duration>60.0:return {"ok":false,"action":{"type":"wait"},"error":"Plan duration exceeds 60 game minutes"}
+	return {"ok":true,"action":steps[0].duplicate(true),"steps":steps,"intent":str(data.get("intent","")).strip_edges(),"error":""}
 
 func decide_demo(observation: Dictionary) -> Dictionary:
 	var context: Dictionary = Memory.personal_context(observation)
@@ -187,6 +225,12 @@ func decide_demo(observation: Dictionary) -> Dictionary:
 	var minute: float = float(context.minute)
 	var inventory: Array = context.inventory
 	var visible: Array = observation.get("mock_view",[]) if observation.get("mock_view",[]) is Array and not own.body.blind else []
+	var story_action:Dictionary=preload("res://scripts/release_ai/demo_episode_policy.gd").decide(_policy,context,visible,_last_action,demo_language)
+	if not story_action.is_empty():
+		var checked_story:Dictionary=Catalog.validate(story_action)
+		_last_action=checked_story.action.duplicate(true);_last_error=str(checked_story.error)
+		declared_intent=str(_policy.get("route_goal","")) if story_action.type=="follow_route" else ""
+		return _last_action.duplicate(true)
 	var action: Dictionary = {"type":"look"}
 	var food: Dictionary = _nearest(visible,["ration","water"])
 	var terminal: Dictionary = _nearest(visible,["terminal"])
@@ -235,7 +279,7 @@ func decide_demo(observation: Dictionary) -> Dictionary:
 	elif ration_slot >= 0 and minute - float(_policy.get("last_food_report",-1000)) > 40.0:
 		_policy.last_food_report = minute
 		_policy.last_speech = minute
-		action = {"type":"speak","text":"I have supplies. We should check the ration queue and share information."}
+		action = {"type":"speak","text":"I have supplies. We should check the ration queue and share information." if demo_language=="en" else "У меня есть запасы. Проверим очередь и расскажем остальным."}
 	elif float(own.needs.hunger) > 30.0 and ration_slot < 0 and not food.is_empty():
 		action = {"type":"take","target":food.ref} if float(food.distance) < 1.5 else {"type":"move_to","target":food.ref}
 	elif float(own.needs.hunger) > 35.0 and ration_slot < 0 and not terminal.is_empty() and minute >= float(_policy.get("ration_denied_until",-1)):
@@ -252,13 +296,13 @@ func decide_demo(observation: Dictionary) -> Dictionary:
 	elif last.get("type") == "use_device" and bool(last.get("ok",false)):
 		action = {"type":"read_screen"}
 	elif phone_slot >= 0 and not own.body.blind and last.get("type") == "read_screen" and not context.contacts.is_empty():
-		action = {"type":"send_message","contact":context.contacts[absi(agent_id.hash()) % context.contacts.size()].ref,"text":"I am checking supplies and the shared equipment queue. Let us compare what we have seen."}
+		action = {"type":"send_message","contact":context.contacts[absi(agent_id.hash()) % context.contacts.size()].ref,"text":"I am checking supplies and the shared equipment queue. Let us compare what we have seen." if demo_language=="en" else "Я проверяю запасы и очередь за оборудованием. Давай сверим сведения."}
 	elif camera_slot >= 0 and not own.body.blind and minute - float(_policy.get("last_photo",-1000)) > 120.0:
 		_policy.last_photo = minute
 		action = {"type":"take_photo","digital":true}
 	elif _slot(inventory,["diary"]) >= 0 and not own.body.blind and minute - float(_policy.get("last_diary",-1000)) > 120.0:
 		_policy.last_diary = minute
-		action = {"type":"write_diary","text":"I am trying to keep track of supplies and what people tell me. Reports need checking."}
+		action = {"type":"write_diary","text":"I am trying to keep track of supplies and what people tell me. Reports need checking." if demo_language=="en" else "Запишу, что было на выдаче. Надо сверить рассказы других с тем, что видел сам."}
 	elif phone_slot < 0 and not terminal.is_empty() and float(terminal.distance) < 2.0 and minute - float(_policy.get("last_queue",-1000)) > 120.0:
 		_policy["last_queue"] = minute
 		action = {"type":"join_queue","kind":"phone"}
@@ -266,10 +310,10 @@ func decide_demo(observation: Dictionary) -> Dictionary:
 		action = {"type":"interact","target":person.ref}
 	elif not person.is_empty() and float(person.distance) < 2.0 and minute - float(_policy.get("last_speech",-1000)) > 35.0:
 		_policy.last_speech = minute
-		action = {"type":"speak","text":"How are you doing? I would like us to compare information and help anyone who is hurt."}
+		action = {"type":"speak","text":"How are you doing? I would like us to compare information and help anyone who is hurt." if demo_language=="en" else "Как ты? Нужна помощь? Давай сверим, что узнали."}
 	elif not context.heard.is_empty() and minute - float(_policy.get("last_speech",-1000)) > 25.0:
 		_policy.last_speech = minute
-		action = {"type":"speak","text":"I heard you. I will check rather than assume the report is correct."}
+		action = {"type":"speak","text":"I heard you. I will check rather than assume the report is correct." if demo_language=="en" else "Я тебя слышу. Проверю на месте."}
 	else:
 		action = _demo_explore(visible,last,minute)
 	var checked: Dictionary = Catalog.validate(action)
@@ -460,7 +504,7 @@ func _dispatch(token: int) -> void:
 		return
 	ticket.reservation = reservation_id
 	ticket.state = "sent"
-	var error: Error = _transport.send(ticket.payload,token,ticket.role)
+	var error: Error = _transport.send(ticket.payload,token,ticket.role,reservation_id)
 	if error != OK:
 		_ledger.abandon(reservation_id,false)
 		_pending.erase(token)
@@ -503,10 +547,14 @@ func _on_response(token: int, response: Dictionary) -> void:
 		return
 	var parsed: Dictionary = parse_response(str(response.get("text","")))
 	_last_action = parsed.action.duplicate(true)
+	last_plan = parsed.get("steps",[]).duplicate(true)
+	declared_intent = str(parsed.get("intent",""))
 	_last_error = str(parsed.error)
 	metadata["ok"] = parsed.ok
 	metadata["error"] = parsed.error
 	metadata["mode"] = "fixture" if bool(response.get("fixture",false)) else "real_vlm"
+	metadata["steps"] = last_plan.duplicate(true)
+	metadata["intent"] = declared_intent
 	decision_ready.emit(agent_id,_run_id,int(ticket.tick),parsed.action,metadata)
 
 func _apply_memory(job: Dictionary, proposal: Dictionary, mode: String) -> void:

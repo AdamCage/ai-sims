@@ -4,8 +4,8 @@ param(
     [switch]$Smoke,
     [switch]$AutoRun,
     [ValidateSet('closed_block','residence','research_station')][string]$Map = 'closed_block',
-    [ValidateSet('sandbox','scarcity','last_ration','deception')][string]$Scenario = 'scarcity',
-    [ValidateRange(3,20)][int]$Agents = 7,
+    [ValidateSet('episode','sandbox','scarcity','last_ration','deception')][string]$Scenario = 'episode',
+    [ValidateRange(3,20)][int]$Agents = 8,
     [switch]$LegacyTests
 )
 $ErrorActionPreference = 'Stop'
@@ -26,7 +26,10 @@ if ($LegacyTests) { $engineArguments += @('--headless', '--script', 'res://tests
 elseif ($Tests) { $engineArguments += @('--headless', '--script', 'res://tests/run_release_tests.gd','--','--test-profile') }
 elseif ($Smoke) { $engineArguments += @('--script', 'res://tests/release_ui_qa.gd','--','--test-profile') }
 else {
-    $engineArguments += @('--', "--scenario=$Scenario", "--map=$Map", "--agents=$Agents")
+    $engineArguments += '--'
+    if ($AutoRun -or $PSBoundParameters.ContainsKey('Map') -or $PSBoundParameters.ContainsKey('Agents') -or $PSBoundParameters.ContainsKey('Scenario')) {
+        $engineArguments += @("--scenario=$Scenario", "--map=$Map", "--agents=$Agents")
+    }
     if ($AutoRun) { $engineArguments += '--auto-run' }
 }
 & $Godot @engineArguments

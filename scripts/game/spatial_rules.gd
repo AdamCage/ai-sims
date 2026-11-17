@@ -80,15 +80,25 @@ static func learn(agent: Dictionary,geometry: Dictionary)->void:
 	if str(agent.get("_learn_stamp",""))==stamp:return
 	agent["_learn_stamp"]=stamp
 	var known: Dictionary=agent.known_cells
+	# Broad phase once per observation. Each sampled ray and clearance test
+	# stays inside this box, so distant buildings cannot affect its result.
+	var local_geometry:=geometry.duplicate(false)
+	for group in ["walls","doors","props"]:
+		var nearby:Array=[]
+		for box in geometry.get(group,[]):
+			var center:=point(box)
+			if absf(center.x-origin.x)<=12.0+float(box.size[0])*0.5 and absf(center.y-origin.y)<=12.0+float(box.size[1])*0.5:
+				nearby.append(box)
+		local_geometry[group]=nearby
 	for x in range(floori((origin.x-10.0)/CELL),ceili((origin.x+10.0)/CELL)+1):
 		for z in range(floori((origin.y-10.0)/CELL),ceili((origin.y+10.0)/CELL)+1):
 			var location:=Vector2(x*CELL,z*CELL)
 			var key:="%d:%d"%[x,z]
 			if known.has(key):continue
-			if visible(agent,location,geometry) and walkable(location,geometry):known[key]=true
+			if visible(agent,location,local_geometry) and walkable(location,local_geometry):known[key]=true
 	known[cell_key(origin)]=true
 
-static func path(agent: Dictionary,destination: Vector2,geometry: Dictionary,agents: Dictionary,ignore_target: String="")->Array:
+static func path(agent: Dictionary,destination: Vector2,geometry: Dictionary,agents: Dictionary,ignore_target: String="",printed:bool=false)->Array:
 	var origin:=point(agent)
 	var targets:Array=[destination]
 	# Stop beside a target rather than trying to stand inside a door/person/table.
@@ -116,10 +126,14 @@ static func path(agent: Dictionary,destination: Vector2,geometry: Dictionary,age
 	var cache_key:=hash([geometry.bounds,geometry.walls,geometry.get("props",[])])
 	if not _occupancy.has(cache_key):
 		var solid:Dictionary={}
-		var base_geometry:Dictionary=geometry.duplicate(false);base_geometry["doors"]=[]
-		for cell_x in range(low.x,high.x+1):
-			for cell_z in range(low.y,high.y+1):
-				if not walkable(Vector2(cell_x*CELL,cell_z*CELL),base_geometry):solid["%d:%d"%[cell_x,cell_z]]=true
+		# Rasterize each axis-aligned collider only over cells it covers.
+		for box in geometry.walls+geometry.get("props",[]):
+			if not box.get("blocking",true):continue
+			var center:=point(box)
+			var half:=Vector2(float(box.size[0]),float(box.size[1]))*0.5+Vector2.ONE*RADIUS
+			for cx in range(maxi(low.x,ceili((center.x-half.x)/CELL)),mini(high.x,floori((center.x+half.x)/CELL))+1):
+				for cz in range(maxi(low.y,ceili((center.y-half.y)/CELL)),mini(high.y,floori((center.y+half.y)/CELL))+1):
+					solid["%d:%d"%[cx,cz]]=true
 		if _occupancy.size()>=32:_occupancy.erase(_occupancy.keys()[0])
 		_occupancy[cache_key]=solid
 	var solids:Dictionary=_occupancy[cache_key]
@@ -135,7 +149,7 @@ static func path(agent: Dictionary,destination: Vector2,geometry: Dictionary,age
 	# Only local cells around occupants need changing; static geometry remains
 	# cached. A route must actually go around people, not cancel on each contact.
 	var bodies_solid:Dictionary={}
-	var grid_body_radius:=RADIUS*2.0+CELL*0.4
+	var grid_body_radius:=RADIUS*2.0+CELL*0.10
 	for id in agents:
 		var other:Dictionary=agents[id]
 		if id==agent.id or not other.get("alive",true) or not str(other.get("carried_by","")).is_empty():continue
@@ -143,13 +157,38 @@ static func path(agent: Dictionary,destination: Vector2,geometry: Dictionary,age
 		for dx in range(floori((center.x-grid_body_radius)/CELL),ceili((center.x+grid_body_radius)/CELL)+1):
 			for dz in range(floori((center.y-grid_body_radius)/CELL),ceili((center.y+grid_body_radius)/CELL)+1):
 				if center.distance_to(Vector2(dx*CELL,dz*CELL))<grid_body_radius:bodies_solid["%d:%d"%[dx,dz]]=true
-	for x in range(low.x,high.x+1):
+	if printed:
+		for blocked in [solids,doors_solid,bodies_solid]:
+			for key in blocked:
+				var xy:PackedStringArray=str(key).split(":")
+				var cell:=Vector2i(int(xy[0]),int(xy[1]))
+				if grid.region.has_point(cell):grid.set_point_solid(cell,true)
+		for x in range(low.x,high.x+1):
+			if x*CELL<float(bounds[0])+RADIUS or x*CELL>float(bounds[1])-RADIUS:grid.fill_solid_region(Rect2i(x,low.y,1,grid.region.size.y),true)
 		for z in range(low.y,high.y+1):
-			var key:="%d:%d"%[x,z]
-			grid.set_point_solid(Vector2i(x,z),solids.has(key) or doors_solid.has(key) or bodies_solid.has(key) or not agent.known_cells.has(key))
+			if z*CELL<float(bounds[2])+RADIUS or z*CELL>float(bounds[3])-RADIUS:grid.fill_solid_region(Rect2i(low.x,z,grid.region.size.x,1),true)
+	else:grid.fill_solid_region(grid.region,true)
+	for key in ([] if printed else agent.known_cells.keys()):
+		if solids.has(key) or doors_solid.has(key) or bodies_solid.has(key):continue
+		var coords:PackedStringArray=str(key).split(":")
+		if coords.size()!=2:continue
+		var cell:=Vector2i(int(coords[0]),int(coords[1]))
+		var x:=cell.x*CELL
+		var z:=cell.y*CELL
+		if x>=float(bounds[0])+RADIUS and x<=float(bounds[1])-RADIUS and z>=float(bounds[2])+RADIUS and z<=float(bounds[3])-RADIUS:
+			grid.set_point_solid(cell,false)
 	var start:=Vector2i(roundi(origin.x/CELL),roundi(origin.y/CELL))
 	if not grid.region.has_point(start):return []
 	grid.set_point_solid(start,false)
+	# A diagonal between two clear nodes can still clip the corner of a wall.
+	# If that happens, try the four-direction path through the same known cells.
+	for mode in [AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES,AStarGrid2D.DIAGONAL_MODE_NEVER]:
+		grid.diagonal_mode=mode
+		var route:=_grid_route(grid,start,origin,targets,geometry,agents,str(agent.id))
+		if not route.is_empty():return route
+	return []
+
+static func _grid_route(grid:AStarGrid2D,start:Vector2i,origin:Vector2,targets:Array,geometry:Dictionary,agents:Dictionary,id:String)->Array:
 	for target:Vector2 in targets:
 		var finish:=Vector2i(roundi(target.x/CELL),roundi(target.y/CELL))
 		if not grid.region.has_point(finish) or grid.is_point_solid(finish):continue
@@ -158,10 +197,11 @@ static func path(agent: Dictionary,destination: Vector2,geometry: Dictionary,age
 		var previous:=origin
 		for index in range(1,raw.size()):
 			var next:Vector2=raw[index]
-			if not clear_line(previous,next,geometry,RADIUS) or not clear_bodies(previous,next,agents,str(agent.id)):result=[];break
+			if not clear_line(previous,next,geometry,RADIUS) or not clear_bodies(previous,next,agents,id):
+				result=[];break
 			result.append([next.x,next.y]);previous=next
 		if result.is_empty() and start!=finish:continue
-		if not clear_line(previous,target,geometry,RADIUS) or not clear_bodies(previous,target,agents,str(agent.id)):continue
+		if not clear_line(previous,target,geometry,RADIUS) or not clear_bodies(previous,target,agents,id):continue
 		result.append([target.x,target.y])
 		return result
 	return []

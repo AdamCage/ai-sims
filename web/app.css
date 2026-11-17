@@ -1,0 +1,13 @@
+:root{color-scheme:dark;font-family:Inter,"Segoe UI",sans-serif;background:#10202b;color:#edf3f4}*{box-sizing:border-box}body{margin:0;overflow:hidden}button,a{font:inherit}button{border:1px solid #49616c;border-radius:7px;background:#203743;color:#edf3f4;padding:7px 12px;cursor:pointer}button:hover{background:#365260}button:focus-visible{outline:2px solid #eebd7a;outline-offset:3px}button[hidden],[hidden]{display:none!important}#toolbar{height:46px;display:flex;align-items:center;gap:20px;padding:0 16px;background:#142a36;border-bottom:1px solid #39515c}.brand{text-decoration:none;color:#eef4f4;font-size:13px;font-weight:800;letter-spacing:2px}.brand span{font-size:9px;letter-spacing:1px;color:#e6b571}#storage-status{font-size:11px;color:#a5bec5;flex:1}nav{display:flex;gap:7px}nav button{font-size:11px;padding:6px 10px}main{position:relative;width:100vw;height:100dvh}body:has(#toolbar:not([hidden])) main{height:calc(100dvh - 46px)}canvas{display:block;width:100%;height:100%;outline:none}#boot{position:absolute;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse at 72% 34%,#35637170,transparent 60%),linear-gradient(125deg,#102431,#233f49)}.boot-card{max-width:680px;width:90%;padding:48px}.eyebrow{font-size:11px;letter-spacing:3px;color:#ecc58b}h1{font-size:clamp(38px,5vw,66px);line-height:1.08;font-weight:600;letter-spacing:-2px;margin:24px 0}p{font-size:16px;line-height:1.7;color:#c5d6d9}progress{width:100%;height:6px;accent-color:#eac38a;margin:28px 0 0}#boot-message{font-size:12px;color:#eac38a}small{display:block;margin-top:32px;font-size:11px;line-height:1.8;color:#91abb4}@media(max-width:900px){#storage-status{display:none}#toolbar{gap:10px}nav{margin-left:auto}nav button{font-size:10px;padding:5px 8px}}@media(prefers-reduced-motion:no-preference){.boot-card{animation:arrive .5s ease-out}@keyframes arrive{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}}
+
+#playtest{width:min(590px,95vw);max-height:90dvh;overflow:auto;background:#182d38;color:#f1f1eb;border:1px solid #52646d;border-radius:12px;padding:24px}
+#playtest::backdrop{background:#07131cc9}
+#playtest header,#playtest footer{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#playtest h2{margin:0;font-size:24px}
+#playtest p{font-size:14px;line-height:1.5}
+#playtest label{display:grid;gap:6px;font-size:14px;margin:16px 0}
+#playtest textarea{resize:vertical;padding:8px;background:#10232e;color:#f1f1eb;border:1px solid #617681;border-radius:4px;font:inherit}
+#playtest footer [role=status]{font-size:13px;color:#eac38a}
+#playtest button[type=submit]{background:#dbbb86;color:#172a33}
+
+.boot-card small a{color:inherit}

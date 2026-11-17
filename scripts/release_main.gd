@@ -11,6 +11,7 @@ const Media = preload("res://scripts/release_ai/media_archive.gd")
 const PersonalMemory = preload("res://scripts/release_ai/personal_memory.gd")
 const ProviderCatalog = preload("res://scripts/release_ai/provider_catalog.gd")
 const PNGEncoder = preload("res://scripts/release_storage/png_encoder.gd")
+const WebBridge = preload("res://scripts/release_storage/web_bridge.gd")
 
 var simulation = Simulation.new()
 var world: Node3D
@@ -31,17 +32,20 @@ var _key := ""
 var _clock := 0.0
 var _ui_clock := 0.0
 var _single_step := false
-var _round: Dictionary = {}
 var _next_decision: Dictionary = {}
 var _last_event_cursor := 0
+var _chronicle:Array=[]
+var _replay_events:Array=[]
 var _slot_cache: Array = []
 var _reviewing := false
 var _replay_cursor := 0
 var _replay_clock := 0.0
+var _replay_state: Dictionary = {}
 var _sounds: Dictionary = {}
 var _test_profile := false
 var _last_autosave := 0.0
 var _observations: Dictionary = {}
+var _demo_camera_due:Dictionary={}
 var _device_screens: Dictionary = {}
 var _catalog: Node
 var _quote: Dictionary = {}
@@ -52,8 +56,29 @@ var appearance_presets: Dictionary = {}
 var _ledger_path:="user://release_usage_ledger.json"
 var _presets_path:="user://appearance_presets.json"
 var _deferred_commands:Array=[]
+var _pending_decisions: Dictionary = {}
+var _plans: Dictionary = {}
+var _decision_states: Dictionary = {}
+var _eligible_since: Dictionary = {}
+var _blocked_ai: Dictionary = {}
+var _sampling := false
+var _capture_frame_lock := false
+var _effective_speed := 1.0
+var _step_expected: Array = []
+var _episode_presented := false
+var _last_useful_answer_ms := 0
+var _web_booted := false
+var _map_request := 0
+var _loading_map := false
+var _ai_pause_reason := ""
+var _entered_story := false
 
 func _ready() -> void:
+	if WebBridge.is_web():
+		set_process(false)
+		if not await WebBridge.ensure_map_pack("closed_block",get_tree()):
+			push_error("The starting map could not be loaded")
+			return
 	simulation.personal_experience.connect(_on_personal_experience)
 	_test_profile = "--test-profile" in OS.get_cmdline_user_args()
 	if _test_profile:
@@ -67,23 +92,27 @@ func _ready() -> void:
 	ledger.configure(minf(1000.0,float(settings.budget)) if OS.has_feature("editor") else float(settings.budget),_ledger_path,4)
 	if not _test_profile:
 		_key = credentials.load_key()
-	mode="real_vlm" if bool(settings.ai_enabled) else "demo"
+	mode="real_vlm" if bool(settings.ai_enabled) or (WebBridge.is_web() and not _key.is_empty()) else "demo"
 	world = World.new(); add_child(world)
 	ui = Interface.new(); add_child(ui)
 	ui.command.connect(_on_command)
-	simulation.reset("closed_block",7,"scarcity",1)
+	simulation.reset("closed_block",8,"episode",1)
 	world.setup(simulation.snapshot())
 	world.set_quality(str(settings.quality))
 	ui.setup(world)
 	ui.set_language(str(settings.language))
 	_make_runtimes()
 	repository.begin(simulation.snapshot())
+	_chronicle=simulation.state.events.duplicate(true)
 	_last_event_cursor = int(simulation.state.event_cursor)
 	_slot_cache = repository.slot_summaries()
 	_setup_audio()
+	_web_booted=WebBridge.is_web()
+	set_process(true)
 	_refresh()
+	if _web_booted:WebBridge.game_ready()
 	ui.set_status(_text("Выберите сценарий. Демонстрационный режим работает без сети.","Choose a scenario. Demo mode works offline."))
-	var launch:Dictionary={"map_id":"closed_block","count":7,"scenario":"scarcity","seed":1}
+	var launch:Dictionary={"map_id":"closed_block","count":8,"scenario":"episode","seed":1}
 	var custom_launch:=false
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with("--agents="):launch.count=int(argument.trim_prefix("--agents="));custom_launch=true
@@ -94,15 +123,16 @@ func _ready() -> void:
 	if "--configure-ai" in OS.get_cmdline_user_args():_set_running(false);ui.show_main_menu(false);ui.show_settings()
 
 func _process(delta: float) -> void:
-	if _quote_refresh_queued and not _provider_pending and int(ledger.status().active_requests)==0:
+	if _web_booted:
+		var command:=WebBridge.poll_command()
+		if not command.is_empty():_on_browser_command(command)
+	if _loading_map:return
+	if _quote_refresh_queued and not _provider_pending and int(ledger.status().active_requests)==0 and _pending_decisions.is_empty() and not _sampling:
 		_quote_refresh_queued=false;_request_quote()
-	# Memory-role calls share the account's concurrency limit. Their completion
-	# has no action callback, so resume queued decisions when a slot is released.
-	if collecting and not _round.is_empty() and not _round.remaining.is_empty():_dispatch_real()
-	if not advancing and not collecting and not _deferred_commands.is_empty():
+	if not advancing and not _sampling and not _deferred_commands.is_empty():
 		var queued:Dictionary=_deferred_commands.pop_front();_on_command(queued.name,queued.payload);return
 	_ui_clock += delta
-	if _ui_clock >= 0.75:
+	if _ui_clock >= 0.25:
 		_ui_clock = 0.0
 		_refresh(false)
 	if _reviewing:
@@ -110,40 +140,134 @@ func _process(delta: float) -> void:
 		if _replay_clock >= 0.35 and _replay_cursor < repository.sequence:
 			_replay_clock = 0.0; _replay_cursor += 1; _display_replay()
 		return
-	if not running or collecting or advancing or _provider_pending:
+	if (running or _single_step) and not _sampling and not advancing and not _provider_pending and not _quote_refresh_queued:
+		collect_decisions()
+	if _single_step and not _sampling and _pending_decisions.is_empty():
+		var ready := true
+		for id in _step_expected:
+			if not _plans.has(id) and not _blocked_ai.has(id):ready=false
+		if ready and not advancing:
+			_apply_plans();advance_world(1.0)
 		return
-	_clock += delta * float(settings.speed)
-	if _clock >= 0.2:
-		_clock = minf(_clock-0.2,0.4)
-		if not _decision_ids().is_empty():
-			collect_decisions()
-		else:
-			advance_world(0.2)
+	if not running or advancing or _capture_frame_lock or _provider_pending:return
+	_effective_speed=_scheduler_speed()
+	if _effective_speed==0.0:return
+	_clock += delta * 0.5 * _effective_speed
+	_clock=minf(_clock,0.2)
+	while _clock >= 0.05 and running and not advancing:
+		_clock-=0.05
+		_apply_plans()
+		advance_world(0.05)
+
+func _scheduler_speed() -> float:
+	var requested:float=clampf(float(settings.speed),0.5,2.0)
+	if mode != "real_vlm":return requested
+	var available:=false
+	var living:=0
+	for id in simulation.state.agents:
+		var actor:Dictionary=simulation.state.agents[id]
+		if not actor.alive:continue
+		living+=1
+		if not actor.busy.is_empty() or _plans.has(id):
+			available=true
+	if living>0 and not available:
+		if _blocked_ai.size()>=living:
+			_ai_pause_reason=_text("AI недоступен","AI unavailable")
+			running=false
+			ui.set_running(false)
+			ui.set_status(_text("AI недоступен. Возобновите игру после восстановления соединения.","AI unavailable. Resume when the connection returns."))
+			return 0.0
+		if not _pending_decisions.is_empty() and Time.get_ticks_msec()-_last_useful_answer_ms>3000:return 0.0
+	if _pending_decisions.is_empty():return requested
+	var oldest := 0.0
+	for packet in _pending_decisions.values():oldest=maxf(oldest,float(Time.get_ticks_msec()-int(packet.started_ms))/1000.0)
+	if oldest>40.0:return minf(requested,0.25)
+	if oldest>20.0:return minf(requested,0.5)
+	return requested
+
+func _on_browser_command(command:Dictionary) -> void:
+	match str(command.get("type","")):
+		"pause":
+			_set_running(false)
+			_single_step=false
+			if bool(command.get("autosave",true)) and not _loading_map and _entered_story:save_slot(3,true)
+		"backup":
+			var ok:bool=not _entered_story or save_slot(3,true)==OK
+			WebBridge.complete_command(int(command.get("id",-1)),ok)
+		"import":
+			var imported:bool=repository.import_browser_slots()
+			if imported:imported=await WebBridge.save_committed(get_tree())
+			WebBridge.complete_command(int(command.get("id",-1)),imported)
+			_slot_cache=repository.slot_summaries()
+			_refresh(false)
+			ui.set_status(_text("Копия восстановлена. Выберите слот.","Backup restored. Select a slot.") if imported else _text("Не удалось импортировать сохранения.","Could not import saves."))
 
 func _on_command(name: String, payload: Dictionary) -> void:
-	if advancing and name in ["new_session","step","save","load","replay","god","appearance","intent","provider"]:
+	if _reviewing and name in ["save","god","appearance","intent","scenario_intervention","continue_sandbox"]:
+		ui.set_status(_text("Вернитесь в текущий мир кнопкой «Продолжить».","Press Continue to return to the current world."))
+		return
+	if (advancing or _sampling) and name in ["new_session","step","save","load","replay","god","appearance","intent","provider"]:
 		_deferred_commands.append({"name":name,"payload":payload.duplicate(true)})
 		ui.set_status(_text("Завершаем уже выполненный игровой шаг и его снимки…","Finishing the committed step and its photographs…"));return
 	_play_sound("click")
 	match name:
 		"new_session": new_session(payload)
 		"run": _set_running(bool(payload.get("value",not running)))
+		"retry_agent":
+			var id:=str(payload.get("id",selected))
+			if not _reviewing and _blocked_ai.has(id) and mode=="real_vlm":
+				_blocked_ai.erase(id)
+				_decision_states.erase(id)
+				_eligible_since.erase(id)
+				_next_decision.erase(id)
+				if not running:_set_running(true,false)
+				_refresh(false)
 		"step": single_step()
 		"select":
 			var id := str(payload.get("id",selected))
-			if simulation.state.agents.has(id): selected=id; world.select_agent(id); _refresh()
-		"view": world.set_first_person(bool(payload.get("first_person",false))); _refresh()
+			var displayed:Dictionary=_replay_state if _reviewing else simulation.state
+			if displayed.agents.has(id):
+				selected=id
+				world.select_agent(id)
+				if _reviewing:_refresh_replay()
+				else:_refresh()
+		"view":
+			world.set_first_person(bool(payload.get("first_person",false)))
+			if _reviewing:_refresh_replay()
+			else:_refresh()
 		"save": save_slot(int(payload.get("slot",1)))
 		"load": load_slot(int(payload.get("slot",1)))
 		"replay": start_replay()
 		"settings":
 			for key in ["language","quality","speed","sfx_volume"]:
 				if payload.has(key): settings[key]=payload[key]
-			settings.speed=clampf(float(settings.speed),0.25,10.0)
+			settings.speed=clampf(float(settings.speed),0.5,2.0)
 			settings.sfx_volume=clampf(float(settings.sfx_volume),0.0,1.0)
+			for runtime in runtimes.values():runtime.demo_language=str(settings.language)
 			world.set_quality(str(settings.quality));ui.set_language(str(settings.language)); _save_settings(); _refresh()
 		"provider": configure_provider(payload)
 		"god": god_intervention(str(payload.get("command","")),payload.get("args",{}))
+		"web_connect": WebBridge.connect_router()
+		"export_backup","import_backup":
+			if WebBridge.is_web():
+				if name=="export_backup":WebBridge.request_backup()
+				else:WebBridge.request_import()
+		"download_report": _download_report()
+		"scenario_intervention": god_intervention("episode_intervention",payload)
+		"continue_sandbox":
+			if god_intervention("continue_sandbox",{}):
+				_episode_presented=true
+				_set_running(true)
+		"focus_event":
+			var event_actor:=str(payload.get("actor",""))
+			var displayed:Dictionary=_replay_state if _reviewing else simulation.state
+			if displayed.agents.has(event_actor):
+				selected=event_actor
+				world.select_agent(selected)
+			if payload.get("position") is Array and payload.position.size()==2:world.focus_position(payload.position)
+			elif displayed.agents.has(event_actor):world.focus_agent()
+			if _reviewing:_refresh_replay()
+			else:_refresh(false)
 		"appearance":
 			god_intervention("appearance",payload)
 			var preset_name:=str(payload.get("preset_name","")).strip_edges().left(80)
@@ -159,12 +283,16 @@ func _on_command(name: String, payload: Dictionary) -> void:
 
 func new_session(config: Dictionary) -> void:
 	_set_running(false); _invalidate(); _reviewing=false
+	if not await _prepare_map(str(config.get("map_id","closed_block"))):return
 	advancing=false
-	simulation.reset(str(config.get("map_id","closed_block")),clampi(int(config.get("count",7)),3,20),str(config.get("scenario","scarcity")),int(config.get("seed",1)))
+	simulation.reset(str(config.get("map_id","closed_block")),clampi(int(config.get("count",8)),3,20),str(config.get("scenario","episode")),int(config.get("seed",1)))
 	selected=str(simulation.state.agents.keys()[0])
-	_next_decision.clear(); _observations.clear(); _device_screens.clear(); _clock=0.0; _last_autosave=0.0
+	_entered_story=true
+	_next_decision.clear(); _observations.clear(); _device_screens.clear(); _clock=0.0; _last_autosave=0.0;_episode_presented=false
+	_demo_camera_due.clear()
 	world.setup(simulation.snapshot()); world.select_agent(selected)
 	_make_runtimes(); repository.begin(simulation.snapshot()); _last_event_cursor=int(simulation.state.event_cursor)
+	_chronicle=simulation.state.events.duplicate(true)
 	_refresh(); ui.set_status(_text("Новая сессия готова. Нажмите «Продолжить», чтобы начать.","A new story is ready. Press Continue to begin."))
 
 func _make_runtimes() -> void:
@@ -172,6 +300,7 @@ func _make_runtimes() -> void:
 	runtimes.clear()
 	for id in simulation.state.agents:
 		var runtime=Runtime.new(); add_child(runtime)
+		runtime.demo_language=str(settings.language)
 		runtime.configure(id,simulation.state.agents[id].profile); runtime.reset(int(simulation.state.run_id))
 		runtime.decision_ready.connect(_on_decision)
 		runtime.memory_updated.connect(_on_memory_updated)
@@ -189,6 +318,7 @@ func _request_quote() -> void:
 	var preference:String=str(settings.provider) if str(settings.model).contains("deepseek-v4") else ""
 	var error:Error=_catalog.request_quote(str(settings.model),_catalog_tag,preference,420)
 	if error!=OK:
+		_single_step=false
 		_provider_pending=false;running=false;ui.set_running(false);ui.set_status(_text("Не удалось проверить тариф и поддержку выбранной модели.","Could not verify the model tariff and capabilities."))
 	else:ui.set_status(_text("Проверяем изображения, тариф и доступного провайдера RouterAI…","Checking images, tariff and RouterAI provider…"))
 
@@ -196,6 +326,7 @@ func _on_quote_ready(tag: int, quote: Dictionary) -> void:
 	if tag!=_catalog_tag:return
 	_provider_pending=false
 	if not bool(quote.get("ok",false)):
+		_single_step=false
 		running=false;ui.set_running(false);ui.set_status("RouterAI: "+str(quote.get("error","Не удалось проверить модель")));return
 	_quote=quote.duplicate(true)
 	for runtime in runtimes.values():runtime.configure_provider(_provider_config())
@@ -203,12 +334,22 @@ func _on_quote_ready(tag: int, quote: Dictionary) -> void:
 	_refresh(false)
 	if _single_step and not running:collect_decisions.call_deferred()
 
-func _set_running(value: bool) -> void:
+func _set_running(value: bool, retry_blocked: bool=true) -> void:
+	if value and _loading_map:return
+	_single_step=false
+	_step_expected.clear()
+	if not value:_quote_refresh_queued=false
 	if value and mode=="real_vlm" and not str(ledger.status().storage_error).is_empty():
 		running=false;ui.set_running(false);ui.set_status(_ledger_message());return
 	if value and mode=="real_vlm" and _key.is_empty():
 		running=false;ui.set_running(false);ui.show_settings();ui.set_status(_text("Нужен личный ключ RouterAI. Сетевой режим сохранён; демонстрация не подменяет AI.","Your RouterAI key is required. Real AI remains selected."));return
-	if not value: _invalidate()
+	if value:
+		_entered_story=true
+		if retry_blocked:
+			for id in _blocked_ai:_decision_states.erase(id)
+			_blocked_ai.clear()
+		_ai_pause_reason=""
+		_last_useful_answer_ms=Time.get_ticks_msec()
 	_reviewing=false; running=value; _clock=0.0
 	ui.set_running(value)
 	if value: ui.set_status(_text("Симуляция: реальная VLM","Simulation: real VLM") if mode=="real_vlm" else _text("Демонстрация без сети","Offline demo"))
@@ -216,121 +357,198 @@ func _set_running(value: bool) -> void:
 	_refresh()
 
 func _invalidate() -> void:
-	generation += 1; collecting=false; _round.clear(); _single_step=false;_quote_refresh_queued=false
-	for runtime in runtimes.values(): runtime.cancel_pending()
+	generation += 1
+	collecting=false;_single_step=false;_quote_refresh_queued=false
+	_sampling=false;_capture_frame_lock=false;_step_expected.clear()
+	_pending_decisions.clear();_plans.clear();_decision_states.clear();_eligible_since.clear();_blocked_ai.clear()
+	for runtime in runtimes.values():runtime.cancel_pending()
 
 func _decision_ids() -> Array:
 	var ids: Array=[]
+	var now:=Time.get_ticks_msec()
 	for id in simulation.state.agents:
 		var actor: Dictionary=simulation.state.agents[id]
-		if actor.alive and not actor.sleeping and not actor.unconscious and actor.busy.is_empty() and float(simulation.state.minute)>=float(_next_decision.get(id,-1.0)):
+		if actor.alive and not actor.sleeping and not actor.unconscious and actor.busy.is_empty() and not _plans.has(id) and not _pending_decisions.has(id) and not _blocked_ai.has(id) and float(simulation.state.minute)>=float(_next_decision.get(id,-1.0)):
 			ids.append(id)
+			if not _eligible_since.has(id):_eligible_since[id]=now
+	ids.sort_custom(func(a,b):
+		if _eligible_since[a]==_eligible_since[b]:return str(a)<str(b)
+		return int(_eligible_since[a])<int(_eligible_since[b]))
 	return ids
 
 func single_step() -> void:
-	_set_running(false); _single_step=true
-	if _decision_ids().is_empty(): advance_world(1.0)
-	else: collect_decisions()
+	_set_running(false);_single_step=true
+	_step_expected=_decision_ids()
+	if _step_expected.is_empty() and _pending_decisions.is_empty():_apply_plans();advance_world(1.0)
+	else:collect_decisions()
 
 func collect_decisions() -> void:
-	if collecting or advancing: return
-	# Leave enough verified-tariff lifetime for the entire queued 20-person
-	# round. Refresh only after memory requests drain; reconfiguring their
-	# transport while in flight would lose receipts and retain unknown charges.
-	if mode=="real_vlm" and (_quote.is_empty() or float(_quote.get("expires_at",0.0))<=Time.get_unix_time_from_system()+420.0):
-		_quote_refresh_queued=true
-		if int(ledger.status().active_requests)==0:_quote_refresh_queued=false;_request_quote()
-		return
+	# Capture and dispatch one person at a time; rendering waits never become a
+	# barrier for the other persons' already accepted movement and actions.
+	if _sampling or advancing or _provider_pending or _quote_refresh_queued:return
+	if not running and not _single_step:
+		_single_step=true;_step_expected=_decision_ids()
 	var ids:=_decision_ids()
-	if ids.is_empty(): return
-	collecting=true
+	if ids.is_empty():return
+	if mode=="real_vlm":
+		if _quote.is_empty() or float(_quote.get("expires_at",0.0))<=Time.get_unix_time_from_system()+120.0:
+			_quote_refresh_queued=true
+			if int(ledger.status().active_requests)==0 and _pending_decisions.is_empty():_quote_refresh_queued=false;_request_quote()
+			return
+		if _pending_decisions.size()>=4 or int(ledger.status().active_requests)>=4:return
+	var id:String=str(ids[0])
 	var ticket:=generation
 	var run_id:=int(simulation.state.run_id)
-	var tick:=int(simulation.state.tick)
-	world.sync_state(simulation.snapshot(),true)
-	var samples: Dictionary={}
-	for id in ids:
-		var observation: Dictionary=simulation.observe(id)
-		var png:=PackedByteArray()
-		if not observation.self_state.body.blind and DisplayServer.get_name()!="headless":
-			world.set_perception_candidates(id,simulation.perception_candidates(id))
-			world.prepare_capture(id)
-			await RenderingServer.frame_post_draw
-			if ticket!=generation: return
-			var image: Image=world.capture_agent(id)
-			if image!=null and not image.is_empty():png=await PNGEncoder.encode(image,get_tree())
+	_sampling=true;collecting=true
+	_pending_decisions[id]={"generation":ticket,"run_id":run_id,"tick":int(simulation.state.tick),"started_ms":Time.get_ticks_msec(),"phase":"capture"}
+	_decision_states[id]={"state":"capturing","waiting_since":Time.get_ticks_msec()}
+	var observation:Dictionary=simulation.observe(id)
+	var refs:Dictionary=simulation.capture_observation_refs(id) if simulation.has_method("capture_observation_refs") else {}
+	var slots:Array=simulation.state.agents[id].inventory.duplicate()
+	var png:=PackedByteArray()
+	# The deterministic policy uses the simulation's occluded personal view.
+	# Store periodic real camera memories in demo; every sighted VLM request
+	# still captures the exact pose and frame of its own decision.
+	var capture_needed:=mode=="real_vlm" or float(observation.minute)>=float(_demo_camera_due.get(id,0.0))
+	var render_capture:bool=capture_needed and not observation.self_state.body.blind and DisplayServer.get_name()!="headless"
+	if render_capture:
+		world.sync_state(simulation.state,true)
+		world.set_perception_candidates(id,simulation.perception_candidates(id))
+		_capture_frame_lock=true
+		world.prepare_capture(id)
+		await RenderingServer.frame_post_draw
+		if ticket!=generation:return
+		var image:Image=world.capture_agent(id)
+		observation=world.enrich_observation(id,observation)
+		_capture_frame_lock=false
+		if image!=null and not image.is_empty():png=await PNGEncoder.encode(image,get_tree())
+		if ticket!=generation:return
+		if mode=="demo" and not png.is_empty():_demo_camera_due[id]=float(observation.minute)+15.0
+		if mode=="real_vlm" and not png.is_empty() and not observation.targets.is_empty():
+			var grounding:Image=await world.grounding_image(image,observation.targets)
 			if ticket!=generation:return
-			observation=world.enrich_observation(id,observation)
-			if mode=="real_vlm" and not png.is_empty() and not observation.targets.is_empty():
-				var grounding:Image=await world.grounding_image(image,observation.targets)
+			if grounding!=null and not grounding.is_empty():
+				observation["grounding_png"]=await PNGEncoder.encode(grounding,get_tree())
 				if ticket!=generation:return
-				if grounding!=null and not grounding.is_empty():
-					observation["grounding_png"]=await PNGEncoder.encode(grounding,get_tree())
-					if ticket!=generation:return
-					observation["grounding_source_hash"]=Media.digest_bytes(png)
-		if simulation.has_method("device_screen") and not observation.self_state.body.blind and DisplayServer.get_name()!="headless":
-			var screen: Dictionary=simulation.device_screen(id)
-			if not screen.is_empty() and not str(screen.get("text","")).is_empty():
-				world.prepare_device_screen(str(screen.get("title","")),str(screen.text))
-				await RenderingServer.frame_post_draw
-				if ticket!=generation:return
-				var screen_image:Image=world.capture_device_screen()
-				if screen_image!=null and not screen_image.is_empty():observation["screen_png"]=await PNGEncoder.encode(screen_image,get_tree())
-				if ticket!=generation:return
-		var grants:Array=PersonalMemory.granted_images(PersonalMemory.personal_context(observation))
-		if not grants.is_empty():observation["viewed_image_ref"]=grants[-1]
-		runtimes[id].observe(observation,png)
-		_observations[id]=observation.duplicate(true)
-		samples[id]={"observation":observation,"png":png}
+				observation["grounding_source_hash"]=Media.digest_bytes(png)
+	if render_capture and simulation.has_method("device_screen"):
+		var screen:Dictionary=simulation.device_screen(id)
+		if not screen.is_empty() and not str(screen.get("text","")).is_empty():
+			world.prepare_device_screen(str(screen.get("title","")),str(screen.text))
+			await RenderingServer.frame_post_draw
+			if ticket!=generation:return
+			var screen_image:Image=world.capture_device_screen()
+			if screen_image!=null and not screen_image.is_empty():observation["screen_png"]=await PNGEncoder.encode(screen_image,get_tree())
+			if ticket!=generation:return
+	var grants:Array=PersonalMemory.granted_images(PersonalMemory.personal_context(observation))
+	if not grants.is_empty():observation["viewed_image_ref"]=grants[-1]
 	if ticket!=generation:return
-	_round={"generation":ticket,"run_id":run_id,"tick":tick,"expected":ids,"remaining":ids.duplicate(),"actions":{},"samples":samples,"diagnostics":{}}
+	if not running and not _single_step:
+		_pending_decisions.erase(id);_decision_states.erase(id);_sampling=false
+		collecting=not _pending_decisions.is_empty()
+		return
+	if simulation.has_method("restrict_observation_refs"):
+		refs=simulation.restrict_observation_refs(id,refs,observation.get("targets",[]))
+	var packet:Dictionary=_pending_decisions[id]
+	packet.merge({"tick":int(observation.tick),"minute":float(observation.minute),"refs":refs,"slots":slots,"phase":"request"},true)
+	_observations[id]=observation.duplicate(true)
+	_sampling=false
 	if mode=="demo":
-		for id in ids:
-			_round.actions[id]=runtimes[id].decide_demo(samples[id].observation)
-		_finish_round()
+		runtimes[id].observe(observation,png)
+		var action:Dictionary=runtimes[id].decide_demo(observation)
+		_on_decision(id,run_id,int(observation.tick),action,{"ok":true,"steps":[action],"intent":runtimes[id].declared_intent,"mode":"demo"})
 	else:
-		_dispatch_real()
+		_decision_states[id]={"state":"thinking","waiting_since":int(packet.started_ms)}
+		runtimes[id].request_decision(observation,png,run_id)
+	collecting=_sampling or not _pending_decisions.is_empty()
 
 func _dispatch_real() -> void:
-	if _round.is_empty():return
-	while not _round.remaining.is_empty() and int(ledger.status().active_requests)<4:
-		var id: String=str(_round.remaining.pop_front())
-		var sample: Dictionary=_round.samples[id]
-		runtimes[id].request_decision(sample.observation,sample.png,int(_round.run_id))
-		if _round.is_empty():return # A disabled transport can synchronously report failure.
+	if running or _single_step:collect_decisions()
 
-func _on_decision(id: String, run_id: int, tick: int, action: Dictionary, diagnostic: Dictionary) -> void:
-	if _round.is_empty() or int(_round.generation)!=generation or int(_round.run_id)!=run_id or int(_round.tick)!=tick or not _round.expected.has(id) or _round.actions.has(id):return
-	_round.actions[id]=action.duplicate(true); _round.diagnostics[id]=diagnostic.duplicate(true)
+func _on_decision(id:String,run_id:int,tick:int,action:Dictionary,diagnostic:Dictionary) -> void:
+	if not _pending_decisions.has(id):return
+	var packet:Dictionary=_pending_decisions[id]
+	if int(packet.generation)!=generation or int(packet.run_id)!=run_id or int(packet.tick)!=tick:return
+	_pending_decisions.erase(id)
+	collecting=_sampling or not _pending_decisions.is_empty()
 	if not bool(diagnostic.get("ok",true)):
-		# A provider failure pauses explicitly instead of quietly continuing as demo.
-		var reason:=str(diagnostic.get("error","Ошибка провайдера"))
-		_set_running(false); ui.set_status(_text("AI приостановлен: ","AI paused: ")+reason); return
-	if _round.actions.size()==_round.expected.size():_finish_round()
-	else:_dispatch_real()
+		var reason:=str(diagnostic.get("error","Ошибка AI"))
+		_blocked_ai[id]=reason;_decision_states[id]={"state":"error","reason":reason}
+		ui.set_status(_text("Персонаж ждёт восстановления AI: ","Person is waiting for AI recovery: ")+reason)
+		if reason.to_lower().contains("budget") or reason.to_lower().contains("ledger") or reason.to_lower().contains("balance"):
+			_ai_pause_reason=reason
+			_single_step=false;running=false;ui.set_running(false)
+		return
+	var steps:Array=diagnostic.get("steps",[action]).duplicate(true)
+	if steps.is_empty():steps=[action.duplicate(true)]
+	_plans[id]={"steps":steps,"index":0,"refs":packet.get("refs",{}),"slots":packet.get("slots",[]),"minute":packet.get("minute",simulation.state.minute),"expires":float(packet.get("minute",simulation.state.minute))+60.0,"intent":str(diagnostic.get("intent","")),"awaiting":false,"received":"","acquisition_ticket":"","next_ms":0}
+	_decision_states[id]={"state":"ready","intent":str(diagnostic.get("intent",""))}
+	_eligible_since.erase(id);_last_useful_answer_ms=Time.get_ticks_msec()
 
-func _finish_round() -> void:
-	if _round.is_empty():return
-	var actions: Dictionary=_round.actions
-	var run_id:=int(_round.run_id)
-	_round.clear(); collecting=false
-	for id in actions:
-		var result: Dictionary=simulation.submit(id,actions[id],run_id)
-		_next_decision[id]=float(simulation.state.minute)+(1.0 if result.ok else 3.0)
-	advance_world(1.0 if _single_step else 0.2)
+func _apply_plans() -> void:
+	for id in _plans.keys():
+		if not simulation.state.agents.has(id):_plans.erase(id);continue
+		var actor:Dictionary=simulation.state.agents[id]
+		var plan:Dictionary=_plans[id]
+		if not actor.alive or actor.unconscious:
+			_plans.erase(id)
+			continue
+		if bool(plan.awaiting) or not actor.busy.is_empty() or Time.get_ticks_msec()<int(plan.next_ms):continue
+		if int(plan.index)>0 and not bool(actor.last_result.get("ok",true)):
+			_decision_states[id]={"state":"replanning","reason":str(actor.last_result.get("message",""))}
+			_plans.erase(id)
+			continue
+		if int(plan.index)>=plan.steps.size() or float(simulation.state.minute)>float(plan.expires):
+			_plans.erase(id);_next_decision[id]=float(simulation.state.minute)+0.5;continue
+		var action:Dictionary=plan.steps[int(plan.index)].duplicate(true)
+		if action.has("slot"):
+			var item_id:=""
+			if action.slot is String and action.slot=="received":
+				item_id=str(plan.received)
+				if item_id.is_empty() and not str(plan.acquisition_ticket).is_empty():
+					item_id=simulation.acquisition_receipt(id,plan.acquisition_ticket)
+					if item_id.is_empty():continue
+			elif action.slot is int or action.slot is float:
+				var original_slot:=int(action.slot)
+				if original_slot>=0 and original_slot<plan.slots.size():item_id=str(plan.slots[original_slot])
+			var current_slot:int=actor.inventory.find(item_id)
+			if current_slot<0:
+				_decision_states[id]={"state":"replanning","reason":_text("Предмет больше недоступен.","The item is no longer available.")};_plans.erase(id);continue
+			action.slot=current_slot
+		var result:Dictionary
+		result=simulation.submit_observed(id,action,plan.refs,int(simulation.state.run_id),float(plan.minute))
+		if not result.ok:
+			_decision_states[id]={"state":"replanning","reason":str(result.reason)};_plans.erase(id);_next_decision[id]=float(simulation.state.minute)+1.0;continue
+		plan.awaiting=true;plan.submitted_tick=int(simulation.state.tick);plan.action=action
+
+func _update_plan_outcomes() -> void:
+	for id in _plans.keys():
+		var plan:Dictionary=_plans[id]
+		if not bool(plan.get("awaiting",false)) or int(simulation.state.tick)<=int(plan.submitted_tick):continue
+		var actor:Dictionary=simulation.state.agents[id]
+		plan.awaiting=false
+		if not bool(actor.last_result.get("ok",false)):
+			_decision_states[id]={"state":"replanning","reason":str(actor.last_result.get("message",""))};_plans.erase(id);_next_decision[id]=float(simulation.state.minute)+1.0;continue
+		if plan.action.type in ["take","buy","request_ration","interact","join_queue"]:
+			plan.received=str(actor.get("last_acquired_item",""))
+			plan.acquisition_ticket=str(actor.get("last_acquisition_ticket","")) if plan.action.type=="join_queue" else ""
+		plan.index=int(plan.index)+1
+		plan.next_ms=Time.get_ticks_msec()+(800 if plan.action.type in ["speak","use_device","read_screen","take","give"] else 150)
+		_decision_states[id]={"state":"acting","intent":str(plan.intent),"step":int(plan.index),"total":plan.steps.size()}
 
 func advance_world(minutes: float) -> void:
 	if advancing:return
 	advancing=true
 	var committed_run:=int(simulation.state.run_id)
 	var events: Array=simulation.advance(minutes)
+	_update_plan_outcomes()
 	# The logical transition is already committed. Journal it before any render
 	# await so pause/reset cannot erase an executed action from the history.
 	_record()
 	for event in events:
 		if bool(event.get("ok",false)) and event.type=="set_goal" and runtimes.has(str(event.actor)):
 			runtimes[str(event.actor)].apply_intervention("goal",{"goal":simulation.state.agents[event.actor].profile.goal})
-	world.sync_state(simulation.snapshot(),true if not running else false)
+	world.sync_state(simulation.state,not running)
 	for event in events:
 		if bool(event.get("ok",false)):
 			if event.type in ["attack","death"]:_play_sound("impact")
@@ -353,6 +571,10 @@ func advance_world(minutes: float) -> void:
 	# every accelerated physics step needlessly stalls presentation.
 	if not running or _single_step:_refresh(false)
 	advancing=false; _single_step=false
+	var scenario:Dictionary=simulation.state.get("scenario_state",{})
+	if bool(scenario.get("completed",false)) and not _episode_presented:
+		_episode_presented=true;running=false;ui.set_running(false);_refresh(false)
+		if ui.has_method("show_debrief"):ui.show_debrief(scenario)
 	if float(simulation.state.minute)-_last_autosave>=60.0:
 		_last_autosave=float(simulation.state.minute);save_slot(3,true)
 
@@ -369,7 +591,7 @@ func _on_personal_experience(id:String,experience:Dictionary) -> void:
 	if runtimes.has(id) and runtimes[id].has_method("observe_personal_event"):
 		runtimes[id].observe_personal_event(experience,int(simulation.state.run_id))
 
-func god_intervention(command_name: String, args: Dictionary) -> void:
+func god_intervention(command_name: String, args: Dictionary) -> bool:
 	_invalidate(); _reviewing=false
 	command_name={"set_memory":"memory","clear_memory":"memory","set_profile":"profile","set_goal":"goal"}.get(command_name,command_name)
 	args=args.duplicate(true)
@@ -381,9 +603,35 @@ func god_intervention(command_name: String, args: Dictionary) -> void:
 		if command_name in ["profile","goal"]:runtimes[id].profile=simulation.state.agents[id].profile.duplicate(true)
 	_next_decision.erase(id)
 	_record();_refresh();ui.set_status(str(result.reason))
+	return bool(result.ok)
+
+func _prepare_map(map_id:String) -> bool:
+	if not WebBridge.is_web():return true
+	_map_request+=1
+	var request:=_map_request
+	_loading_map=true
+	var ok:=await WebBridge.ensure_map_pack(map_id,get_tree())
+	if request!=_map_request:return false
+	_loading_map=false
+	if not ok:ui.set_status(_text("Не удалось загрузить карту. Проверьте соединение и повторите выбор.","Map download failed. Check the connection and select it again."))
+	return ok
+
+func _download_report() -> void:
+	var state:Dictionary=_replay_state if _reviewing else simulation.state
+	var story:Dictionary=state.get("scenario_state",state.get("completed_episode",{}))
+	if state.get("scenario")=="sandbox" and state.has("completed_episode"):story=state.completed_episode
+	var report:={"map":state.get("map_name",""),"minute":state.minute,"story":story.get("title",""),"phase":story.get("phase_title",""),"outcome":story.get("outcome",{}),"summary":story.get("debrief",[]),"metrics":story.get("metrics",{}),"events":_replay_events if _reviewing else _chronicle}
+	var contents:=JSON.stringify(report,"\t")
+	if WebBridge.is_web():
+		JavaScriptBridge.download_buffer(contents.to_utf8_buffer(),"AI-Sims-story.json","application/json")
+		return
+	var path:=OS.get_system_dir(OS.SYSTEM_DIR_DOWNLOADS).path_join("AI-Sims-story-%d.json"%int(Time.get_unix_time_from_system()))
+	var err:=Repository.atomic_write(path,contents)
+	ui.set_status(_text("Отчёт сохранён в ","Story report saved to ")+path if err==OK else error_string(err))
 
 func configure_provider(config: Dictionary) -> void:
 	_set_running(false)
+	_invalidate()
 	var key:=str(config.get("key","")).strip_edges()
 	if not key.is_empty():
 		_key=key
@@ -408,16 +656,18 @@ func _record() -> void:
 	var new_events: Array=[]
 	for event in simulation.state.events:
 		if int(event.seq)>=_last_event_cursor:new_events.append(event)
+	_chronicle.append_array(new_events)
 	_last_event_cursor=int(simulation.state.event_cursor)
-	repository.record(simulation.snapshot(),new_events)
+	repository.record(simulation.state,new_events)
 
-func save_slot(slot: int, automatic: bool = false) -> void:
+func save_slot(slot: int, automatic: bool = false) -> Error:
 	var personal: Dictionary={}
 	for id in runtimes:personal[id]=runtimes[id].export_state()
 	var result:Error=repository.save_slot(slot,{"world":simulation.export_state(),"runtimes":personal,"next_decision":_next_decision,"settings":_public_settings()})
 	_slot_cache=repository.slot_summaries()
 	if not automatic:ui.set_status(_text("Сессия сохранена в слот %d.","Story saved in slot %d.")%clampi(slot,1,3) if result==OK else _text("Ошибка сохранения: ","Save failed: ")+error_string(result))
 	_refresh(false)
+	return result
 
 func load_slot(slot: int) -> void:
 	_set_running(false)
@@ -427,6 +677,7 @@ func load_slot(slot: int) -> void:
 	if not data.get("world") is Dictionary or not data.get("runtimes") is Dictionary:ui.set_status(_text("Повреждён формат сессии.","The story format is damaged."));return
 	var staged=Simulation.new()
 	if not staged.import_state(data.world):ui.set_status(_text("Загрузка отклонена: недопустимое состояние мира.","Load rejected: invalid world state."));return
+	if not await _prepare_map(str(staged.state.map_id)):return
 	if not data.get("next_decision",{}) is Dictionary:ui.set_status(_text("Загрузка отклонена: повреждён планировщик.","Load rejected: invalid scheduler."));return
 	for id in data.get("next_decision",{}):
 		var due:Variant=data.next_decision[id]
@@ -437,17 +688,25 @@ func load_slot(slot: int) -> void:
 		var candidate=Runtime.new();candidate.configure(id,staged.state.agents[id].profile)
 		var valid:bool=candidate.import_state(data.runtimes[id],int(staged.state.run_id));candidate.free()
 		if not valid:ui.set_status(_text("Загрузка отклонена: повреждена личная память.","Load rejected: personal memory is damaged."));return
-	simulation.import_state(data.world);_make_runtimes()
+	if not repository.resume_from_slot(staged.snapshot(),data.get("replay",{})):
+		ui.set_status(_text("Не удалось открыть запись этой истории.","The history for this save could not be opened."))
+		return
+	_invalidate();simulation.import_state(data.world);_make_runtimes()
 	advancing=false
 	for id in runtimes:runtimes[id].import_state(data.runtimes[id],int(simulation.state.run_id))
+	_entered_story=true
 	_next_decision=data.get("next_decision",{}).duplicate(true) if data.get("next_decision",{}) is Dictionary else {}
+	_last_autosave=float(simulation.state.minute)
+	_observations.clear();_device_screens.clear()
+	_demo_camera_due.clear()
 	if not simulation.state.agents.has(selected):selected=str(simulation.state.agents.keys()[0])
-	_reviewing=false;world.setup(simulation.snapshot());world.select_agent(selected)
-	repository.begin(simulation.snapshot());_last_event_cursor=int(simulation.state.event_cursor)
+	_reviewing=false;_episode_presented=bool(simulation.state.get("scenario_state",{}).get("completed",false));world.setup(simulation.snapshot());world.select_agent(selected)
+	_last_event_cursor=int(simulation.state.event_cursor)
+	_chronicle=repository.events_through(repository.sequence)
 	_refresh();ui.set_status(_text("Сессия восстановлена. Поколение запросов обновлено; денежный бюджет сохранён.","Story restored. Previous AI requests are invalidated; spending is preserved."))
 
 func start_replay() -> void:
-	_set_running(false);repository.flush();_reviewing=true;_replay_cursor=0;_replay_clock=0.0;_display_replay()
+	_set_running(false);_invalidate();repository.flush();_reviewing=true;_replay_cursor=0;_replay_clock=0.0;_display_replay()
 
 func _display_replay() -> void:
 	var state:Dictionary=repository.reconstruct(_replay_cursor)
@@ -455,8 +714,14 @@ func _display_replay() -> void:
 	var validator=Simulation.new()
 	if not validator.import_state(state):
 		_reviewing=false;ui.set_status(_text("Запись журнала содержит недопустимый мир.","The journal contains an invalid world state."));return
-	world.sync_state(state,true);ui.refresh(state,_debug(),_session_info())
+	_replay_state=state
+	_replay_events=repository.events_through(_replay_cursor)
+	world.sync_state(state,true)
+	_refresh_replay()
 	ui.set_status(_text("Воспроизведение %d / %d — без обращений к модели","Replay %d / %d — no model calls")%[_replay_cursor,repository.sequence])
+
+func _refresh_replay() -> void:
+	if not _replay_state.is_empty():ui.refresh(_replay_state,{},_session_info(_replay_state))
 
 func _debug() -> Dictionary:
 	var values:Dictionary={}
@@ -465,18 +730,40 @@ func _debug() -> Dictionary:
 	if runtimes.has(selected):values[selected]=runtimes[selected].debug(12)
 	return values
 
-func _session_info() -> Dictionary:
-	return {"mode":mode,"running":running,"waiting":collecting or _provider_pending,"selected":selected,"settings":_public_settings(),"budget":ledger.status(),"slots":_slot_cache,"replaying":_reviewing,"map_catalog":simulation.get_map_catalog(),"version":ProjectSettings.get_setting("application/config/version","0.2.0"),"observations":_observations,"device_screens":_device_screens,"appearance_presets":appearance_presets,"connection":{"mode":mode,"has_key":not _key.is_empty(),"budget":ledger.status(),"waiting":collecting or _provider_pending}}
+func _session_info(replay:Dictionary={}) -> Dictionary:
+	var historical:=not replay.is_empty()
+	var shown:Dictionary=replay if historical else simulation.state
+	var waiting:bool=not historical and (collecting or _provider_pending)
+	var statuses:Dictionary={}
+	for id in shown.agents:
+		var status:Dictionary=shown.agents[id].get("activity_status",{}).duplicate(true)
+		if not historical:
+			status["decision"]=_decision_states.get(id,{}).duplicate(true)
+			status["ai_state"]=str(status.decision.get("state","queued" if _eligible_since.has(id) else ""))
+			if status.decision.has("reason"):status["blocked_reason"]=str(status.decision.reason)
+			if _plans.has(id):status["intent"]=str(_plans[id].intent)
+		statuses[id]=status
+	var budget:Dictionary=ledger.status()
+	return {
+		"mode":mode,"running":running,"waiting":waiting,"selected":selected,"settings":_public_settings(),
+		"budget":budget,"slots":_slot_cache,"replaying":historical,"map_catalog":simulation.get_map_catalog(),
+		"version":ProjectSettings.get_setting("application/config/version"),"scenario":shown.get("scenario_state",{}),
+		"chronicle_events":_replay_events if historical else _chronicle,
+		"observations":{} if historical else _observations,"device_screens":{} if historical else _device_screens,
+		"agent_statuses":statuses,"decision_states":{} if historical else _decision_states,"appearance_presets":appearance_presets,
+		"effective_speed":_effective_speed,"web":_web_booted,
+		"connection":{"mode":mode,"has_key":not _key.is_empty(),"budget":budget,"waiting":waiting,"pause_reason":_ai_pause_reason}
+	}
 
 func _refresh(update_world: bool = true) -> void:
 	if not is_instance_valid(ui) or _reviewing:return
 	var state:Dictionary=simulation.snapshot()
 	if update_world:world.sync_state(state)
-	if not collecting and not advancing and simulation.state.agents.has(selected):
-		_observations[selected]=simulation.observe(selected)
-		if simulation.has_method("device_screen"):_device_screens[selected]=simulation.device_screen(selected)
+	if simulation.state.agents.has(selected) and simulation.has_method("device_screen"):
+		_device_screens[selected]=simulation.device_screen(selected)
 	ui.refresh(state,_debug(),_session_info())
-	ui.set_connection_state({"mode":mode,"has_key":not _key.is_empty(),"budget":ledger.status(),"waiting":collecting or _provider_pending})
+	if _web_booted:
+		WebBridge.interface().playtestContext(str(ProjectSettings.get_setting("application/config/version")),str(state.map_id),mode,str(settings.language))
 
 func _public_settings() -> Dictionary:
 	return settings.duplicate(true)
@@ -503,7 +790,7 @@ func _load_settings() -> void:
 				if loaded.has(key) and typeof(loaded[key])==typeof(settings[key]):settings[key]=loaded[key]
 	settings.language="en" if str(settings.language)=="en" else "ru"
 	if settings.quality not in ["low","medium","high"]:settings.quality="medium"
-	settings.speed=clampf(float(settings.speed),0.25,10.0)
+	settings.speed=clampf(float(settings.speed),0.5,2.0)
 	settings.sfx_volume=clampf(float(settings.sfx_volume),0.0,1.0)
 	settings.budget=clampf(float(settings.budget),0.01,1000.0 if OS.has_feature("editor") else 1000000.0)
 

@@ -9,5 +9,5 @@ func _process_modification() -> void:
 		for index in skeleton.get_bone_count():
 			if skeleton.get_bone_name(index).to_lower() in ["head","mixamorig_head"]:_head=index;break
 	if _head<0:return
-	var shapes: Array[Vector3]=[Vector3.ONE,Vector3(1.08,0.95,1.025),Vector3(0.93,1.055,0.99)]
+	var shapes: Array[Vector3]=[Vector3(1.025,1.025,1.02),Vector3(1.09,0.98,1.04),Vector3(0.965,1.06,1.015)]
 	skeleton.set_bone_pose_scale(_head,shapes[posmod(variant,3)])

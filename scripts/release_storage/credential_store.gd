@@ -1,6 +1,7 @@
 extends RefCounted
 ## Windows Credential Manager. No secrets in settings, save files or argv.
 const BINARY = "res://assets/release/bin/credential_bridge.exe"
+const WebBridge = preload("res://scripts/release_storage/web_bridge.gd")
 
 func _binary_path() -> String:
 	if OS.get_name() != "Windows" or not FileAccess.file_exists(BINARY):
@@ -45,16 +46,20 @@ func _call(operation: String, secret: String = "", testing: bool = false) -> Dic
 	return {"ok":true,"value":Marshalls.base64_to_utf8(response.trim_prefix("OK:")) if operation == "get" and response.length()>3 else "","error":""}
 
 func save_key(key: String) -> bool:
+	if WebBridge.is_web():return WebBridge.set_key(key)
 	return bool(_call("put", key).ok)
 
 func load_key() -> String:
+	if WebBridge.is_web():return WebBridge.key()
 	var result := _call("get")
 	return str(result.value) if result.ok else ""
 
 func delete_key() -> bool:
+	if WebBridge.is_web():return WebBridge.clear_key()
 	return bool(_call("delete").ok)
 
 func self_test() -> bool:
+	if WebBridge.is_web():return WebBridge.ready() and WebBridge.has_lease()
 	var sentinel := "ai-sims-local-test-"+str(Time.get_ticks_usec())
 	var written := _call("put", sentinel, true)
 	var retrieved := _call("get", "", true)

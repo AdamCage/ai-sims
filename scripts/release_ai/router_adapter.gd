@@ -5,6 +5,7 @@ signal response_ready(token: int, response: Dictionary)
 const ENDPOINT: String = "https://routerai.ru/api/v1/chat/completions"
 const RECEIPT_ENDPOINT: String = "https://routerai.ru/api/v1/generation?id="
 const DEFAULT_MODEL: String = "~deepseek/deepseek-v4-flash-latest"
+const WebBridge = preload("res://scripts/release_storage/web_bridge.gd")
 var enabled: bool = false
 var model: String = DEFAULT_MODEL
 var timeout_seconds: float = 30.0
@@ -42,7 +43,7 @@ func provider_only() -> Array:
 func is_fixture() -> bool:
 	return fixture_response.is_valid()
 
-func send(payload: Dictionary, token: int, role: String) -> Error:
+func send(payload: Dictionary, token: int, role: String, reservation_id: String = "") -> Error:
 	if not available():
 		return ERR_UNAUTHORIZED
 	if fixture_response.is_valid():
@@ -57,16 +58,36 @@ func send(payload: Dictionary, token: int, role: String) -> Error:
 	request.body_size_limit = 2 * 1024 * 1024
 	add_child(request)
 	_requests[token] = request
-	request.request_completed.connect(_completed.bind(token, request))
+	request.request_completed.connect(_completed.bind(token, request, reservation_id))
 	var headers := PackedStringArray(["Content-Type: application/json","Authorization: Bearer " + _key])
 	var packet: Dictionary = payload.duplicate(true)
 	packet["provider"] = {"only":_provider_only.duplicate(),"allow_fallbacks":false}
 	packet.merge(_generation_parameters,true)
+	if WebBridge.is_web():
+		_send_after_durable_reservation(token,request,headers,packet,WebBridge.ledger_revision())
+		return OK
 	var result: Error = request.request(ENDPOINT, headers, HTTPClient.METHOD_POST, JSON.stringify(packet))
 	if result != OK:
 		_requests.erase(token)
 		request.queue_free()
 	return result
+
+func _send_after_durable_reservation(token: int, request: HTTPRequest, headers: PackedStringArray, packet: Dictionary, revision: int) -> void:
+	# A reserve() call is synchronous; its browser IDB transaction is not. Never
+	# dispatch a paid HTTP request until the reservation has committed to disk.
+	var deadline := Time.get_ticks_msec()+15000
+	while _requests.has(token) and Time.get_ticks_msec()<deadline:
+		if not WebBridge.has_lease() or not str(WebBridge.status().get("storage_error","")).is_empty():break
+		if WebBridge.ledger_durable(revision):
+			var error := request.request(ENDPOINT,headers,HTTPClient.METHOD_POST,JSON.stringify(packet))
+			if error!=OK:
+				_requests.erase(token);request.queue_free()
+				response_ready.emit(token,{"ok":false,"error":"Browser HTTP request could not start","actual_rub":0.0,"currency":"RUB"})
+			return
+		await get_tree().process_frame
+	if _requests.has(token):
+		_requests.erase(token);request.queue_free()
+		response_ready.emit(token,{"ok":false,"error":"Browser reservation was not durably saved; no paid request sent","actual_rub":0.0,"currency":"RUB"})
 
 func cancel(token: int) -> void:
 	if not _requests.has(token):
@@ -92,7 +113,7 @@ func _emit_fixture(token: int, payload: Dictionary, role: String) -> void:
 	result["requested_model"] = model
 	response_ready.emit(token, result)
 
-func _completed(result: int, status: int, headers: PackedStringArray, body: PackedByteArray, token: int, request: HTTPRequest) -> void:
+func _completed(result: int, status: int, headers: PackedStringArray, body: PackedByteArray, token: int, request: HTTPRequest, reservation_id: String = "") -> void:
 	if not _requests.has(token):
 		return
 	_requests.erase(token)
@@ -110,6 +131,9 @@ func _completed(result: int, status: int, headers: PackedStringArray, body: Pack
 		parsed["generation_ref"] = generation_header(headers)
 	parsed["quoted_provider"] = ",".join(_provider_only)
 	if float(parsed.get("actual_rub",-1.0)) < 0.0 and valid_generation_ref(str(parsed.get("generation_ref",""))):
+		if WebBridge.is_web() and not reservation_id.is_empty():
+			var bridge = WebBridge.interface()
+			if bridge != null:bridge.noteReceipt(reservation_id,str(parsed.generation_ref))
 		_begin_receipt(token,parsed)
 	else:
 		parsed["cost_source"] = "explicit_RUB_response" if float(parsed.get("actual_rub",-1.0)) >= 0.0 else "unknown"

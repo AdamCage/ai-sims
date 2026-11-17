@@ -31,7 +31,19 @@
     "Hair_0",
     "Hair_1",
     "Hair_2",
-    "Hair_3"
+    "Hair_3",
+    "Hair_4",
+    "Hair_5"
+  ],
+  "outfits": [
+    "tee",
+    "hoodie",
+    "work_jacket",
+    "labcoat"
+  ],
+  "shoes": [
+    "sneakers",
+    "boots"
   ],
   "tint_materials": [
     "Shirt",
@@ -40,5 +52,6 @@
   ],
   "source": "https://quaternius.com/packs/universalbasecharacters.html",
   "animations_source": "https://quaternius.com/packs/universalanimationlibrary.html",
-  "license": "CC0-1.0"
+  "license": "CC0-1.0",
+  "modifications": "Original relaxed garments, solid hems, collars, hood, pockets, lapels, shoes, bob and ponytail; softened muscle geometry and normal shading."
 }

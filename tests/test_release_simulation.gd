@@ -210,10 +210,19 @@ func _test_shared_device_reuse()->void:
 	var key:String=sim.state.terminal.loans.keys()[0]
 	var first:Dictionary=sim.state.agents.person_00
 	var slot:int=first.inventory.find(key)
+	# This reuse fixture has one shared phone and two prospective borrowers.
+	for item_id in sim.state.items.keys():
+		var item:Dictionary=sim.state.items[item_id]
+		if item.kind=="phone" and item.container=="terminal":sim.state.items.erase(item_id)
+	var first_ticket:String=first.last_acquisition_ticket
+	check(first.last_acquired_item==key and sim.acquisition_receipt("person_00",first_ticket)==key,"immediate queue acquisition binds to exact equipment and request")
+	check(_act(sim,"person_01",{"type":"join_queue","kind":"phone"}).ok,"next resident joins the physical equipment queue")
+	var ticket:String=sim.state.agents.person_01.last_acquisition_ticket
+	check(ticket!=first_ticket and sim.acquisition_receipt("person_01",ticket).is_empty(),"queued resident cannot use the first borrower's equipment")
 	check(_act(sim,"person_00",{"type":"login","slot":slot}).ok,"first borrower logs into own account")
 	check(_act(sim,"person_00",{"type":"logout","slot":slot}).ok,"first borrower deliberately logs out")
 	check(_act(sim,"person_00",{"type":"return_device","slot":slot}).ok,"logged-out shared phone can be returned")
-	check(_act(sim,"person_01",{"type":"join_queue","kind":"phone"}).ok,"next borrower gets returned shared phone")
+	check(sim.acquisition_receipt("person_01",ticket)==key and sim.acquisition_receipt("person_00",first_ticket).is_empty(),"delayed equipment issue follows original ticket and ends former loan")
 	var second:Dictionary=sim.state.agents.person_01
 	slot=second.inventory.find(key)
 	check(slot>=0,"next borrower actually receives same physical device")
@@ -516,10 +525,16 @@ func _test_release_regressions()->void:
 	check(sim.state.agents.person_00.busy.get("bed","")=="bed","continued sleep preserves bed capability")
 	check(_act(sim,"person_00",{"type":"wake"}).ok,"safe bed exit")
 	check(Spatial.walkable(Spatial.point(sim.state.agents.person_00),sim.state.geometry,sim.state.agents,"person_00"),"woken body physically valid")
-	var counts:Array=[]
+	var layouts:Dictionary={}
 	for map_id in ["closed_block","residence","research_station"]:
-		sim.reset(map_id,20,"scarcity",1);counts.append(sim.state.geometry.doors.size())
-	check(counts==[12,8,6],"three authored map topologies differ")
+		sim.reset(map_id,20,"scarcity",1)
+		var geometry:Dictionary=sim.state.geometry
+		var room_ids:Array=geometry.rooms.map(func(room):return room.id)
+		var entry_points:Array=geometry.doors.map(func(door):return door.center)
+		check(geometry.districts.size()>=3 and room_ids.size()>=12,map_id+" has inhabited districts and destinations")
+		layouts[map_id]={"rooms":room_ids,"doors":entry_points}
+	check(layouts.closed_block.rooms.has("arrival") and layouts.residence.rooms.has("shop") and layouts.research_station.rooms.has("evacuation"),"scenario-specific destinations are present")
+	check(layouts.closed_block.doors!=layouts.residence.doors and layouts.residence.doors!=layouts.research_station.doors and layouts.closed_block.doors!=layouts.research_station.doors,"the maps have different physical entrance layouts")
 	sim.reset("closed_block",3,"last_ration",1)
 	check(int(sim.state.terminal.stock)==0 and int(sim.state.economy.shop_stock.ration)==0,"last-ration scenario closes alternative food sources")
 	sim.reset("closed_block",3,"deception",1)

@@ -22,7 +22,7 @@ static func execute(world:Object,id:String,action:Dictionary,resolved:Dictionary
 			if amount<=0 or int(actor.tokens)<amount:return world._result(false,"Недостаточно жетонов.")
 			actor.tokens=int(actor.tokens)-amount;other.tokens=int(other.tokens)+amount
 			world._relation(str(other.id),id,3.0,"Передал жетоны.")
-			return world._result(true,"Передано %d жетонов."%amount)
+			return world._result(true,"Передано %d жетонов."%amount,{"recipient":other.id,"tokens":amount})
 		"buy","sell":return _shop(world,id,action,resolved)
 		_:return _offer(world,id,action,resolved)
 
@@ -47,31 +47,40 @@ static func terminal_request(world:Object,id:String,kind:String)->Dictionary:
 		if issued>=int(world.state.terminal.daily_limit):return world._result(false,"Личный суточный паёк уже получен.")
 		if int(world.state.terminal.stock)<=0:return world._result(false,"Запас терминала исчерпан.")
 		world.state.terminal.stock=int(world.state.terminal.stock)-1;world.state.terminal.issued[key]=issued+1
-		world._new_item("ration","Личный паёк",actor.position,id,id)
-		return world._result(true,"Выдан один реальный паёк по личному праву.")
+		var ration:Dictionary=world._new_item("ration","Личный паёк",actor.position,id,id)
+		return world._result(true,"Выдан один реальный паёк по личному праву.",{"item":ration.id,"kind":"ration"})
 	if kind not in ["camera","phone"]:return world._result(false,"Такое оборудование не выдаётся.")
 	for loan in world.state.terminal.loans.values():
 		if loan.actor==id:return world._result(false,"Сначала верните прежнее общее оборудование.")
 	var queue:Array=world.state.terminal.queues[kind]
+	if not actor.has("queue_tickets"):actor.queue_tickets={}
 	if not queue.has(id):queue.append(id)
-	if _issue(world,id,kind):return world._result(true,"Общее устройство выдано на один игровой час.")
-	return world._result(true,"Место в очереди: %d."%(queue.find(id)+1))
+	if not actor.queue_tickets.has(kind):actor.queue_tickets[kind]="%s/%s/%d/%d"%[id,kind,world.state.run_id,world.state.tick]
+	var ticket:String=actor.queue_tickets[kind]
+	var item_id:String=_issue(world,id,kind)
+	if not item_id.is_empty():return world._result(true,"Общее устройство выдано на один игровой час.",{"item":item_id,"kind":kind,"ticket":ticket})
+	return world._result(true,"Место в очереди: %d."%(queue.find(id)+1),{"ticket":ticket,"kind":kind})
 
-static func _issue(world:Object,id:String,kind:String)->bool:
+static func _issue(world:Object,id:String,kind:String,delayed:bool=false)->String:
 	var queue:Array=world.state.terminal.queues[kind]
-	if queue.is_empty() or queue[0]!=id:return false
+	if queue.is_empty() or queue[0]!=id:return ""
 	var actor:Dictionary=world.state.agents[id]
-	if not actor.alive or world._hands(actor)==0 or not _near_terminal(world,actor):return false
+	if not actor.alive or world._hands(actor)==0 or not _near_terminal(world,actor):return ""
 	for loan in world.state.terminal.loans.values():
-		if loan.actor==id:return false
+		if loan.actor==id:return ""
 	for item in world.state.items.values():
 		if item.kind==kind and item.container=="terminal" and str(item.holder).is_empty():
 			item.holder=id;item.container="";actor.inventory.append(item.id)
-			world.state.terminal.loans[item.id]={"actor":id,"deadline":float(world.state.minute)+float(world.state.terminal.slot_minutes),"kind":kind,"overdue":false}
+			var ticket:String=str(actor.get("queue_tickets",{}).get(kind,""))
+			if actor.has("queue_tickets"):actor.queue_tickets.erase(kind)
+			world.state.terminal.loans[item.id]={"actor":id,"deadline":float(world.state.minute)+float(world.state.terminal.slot_minutes),"kind":kind,"overdue":false,"ticket":ticket}
 			queue.pop_front()
 			world._personal(id,{"channel":"terminal","text":"Выдано общее оборудование: "+str(item.label),"source":"issued_item"})
-			return true
-	return false
+			if delayed:
+				if ticket!="" and actor.get("last_acquisition_ticket","")==ticket:actor["last_acquired_item"]=item.id
+				world._event(id,"equipment_issued",true,"Подошла очередь: выдано "+str(item.label)+".",{"item":item.id,"kind":kind,"ticket":ticket})
+			return str(item.id)
+	return ""
 
 static func _shop(world:Object,id:String,action:Dictionary,resolved:Dictionary)->Dictionary:
 	var actor:Dictionary=world.state.agents[id]
@@ -93,7 +102,7 @@ static func _shop(world:Object,id:String,action:Dictionary,resolved:Dictionary)-
 		actor.tokens=int(actor.tokens)-price;world.state.economy.shop_stock[kind]=int(world.state.economy.shop_stock[kind])-1
 		if item.is_empty():item=world._new_item(kind,{"ration":"Паёк","medkit":"Аптечка","splint":"Шина","camera":"Фотоаппарат","knife":"Нож"}.get(kind,kind),actor.position,id,id)
 		else:item.holder=id;item.owner=id;item.container="";actor.inventory.append(item.id)
-		return world._result(true,"Куплен предмет за %d жетонов."%price,{"item":item.id})
+		return world._result(true,"Куплен предмет за %d жетонов."%price,{"item":item.id,"kind":item.kind})
 	var item:Dictionary=world._inventory_item(id,int(action.slot))
 	if item.is_empty() or not world.state.economy.prices.has(item.kind) or world.state.terminal.loans.has(item.id):return world._result(false,"Этот предмет нельзя продать магазину.")
 	var price:=maxi(1,floori(float(world.state.economy.prices[item.kind])*0.5))
@@ -161,4 +170,4 @@ static func advance(world:Object,_minutes:float)->void:
 		# A dead participant cannot collect equipment; keeping that obsolete head
 		# would permanently block every living participant behind them.
 		while not queue.is_empty() and (not world.state.agents.has(str(queue[0])) or not world.state.agents[str(queue[0])].alive):queue.pop_front()
-		if not queue.is_empty():_issue(world,str(queue[0]),kind)
+		if not queue.is_empty():_issue(world,str(queue[0]),kind,true)

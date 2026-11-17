@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#152532"><meta name="referrer" content="no-referrer"><title>AI Sims — живые истории</title><link rel="icon" href="$GODOT_SPLASH"><link rel="stylesheet" href="app.css"></head>
+<body><header id="toolbar" hidden><a class="brand" href="./">AI SIMS <span>BETA</span></a><span id="storage-status" role="status">Сохранения на этом устройстве</span><nav><button id="connect">Подключить RouterAI</button><button id="backup">Скачать сохранения</button><button id="import">Загрузить копию</button><button id="feedback">Отзыв</button><button id="fullscreen" aria-label="Полный экран">⛶</button></nav></header>
+<main><canvas id="canvas" tabindex="0" aria-label="Мир AI Sims"></canvas><section id="boot" aria-live="polite"><div class="boot-card"><span class="eyebrow">ТЕСТОВАЯ ВЕРСИЯ</span><h1>У каждой жизни<br>своя история.</h1><p>Наблюдайте за персонажами, их решениями<br>и отношениями в общем мире.</p><progress id="boot-progress" max="1"></progress><p id="boot-message">Готовим мир…</p><button id="boot-retry" hidden>Повторить запуск</button><small>Сохранения остаются в этом браузере.<br>Реальный AI подключается через ваш RouterAI. <a href="credits.txt" target="_blank" rel="noopener">Авторы</a></small></div></section></main><input type="file" id="import-file" accept=".aisims,application/json,.json" hidden>
+<dialog id="playtest" aria-labelledby="playtest-title">
+  <header><h2 id="playtest-title" data-copy="title"></h2><button type="button" data-close data-copy="close"></button></header>
+  <p data-copy="note"></p>
+  <form>
+    <label><span data-copy="situation"></span><textarea name="situation" maxlength="2500" rows="2"></textarea></label>
+    <label><span data-copy="cause"></span><textarea name="cause" maxlength="2500" rows="2"></textarea></label>
+    <label><span data-copy="ending"></span><textarea name="ending" maxlength="2500" rows="2"></textarea></label>
+    <label><span data-copy="problem"></span><textarea name="problem" maxlength="2500" rows="2"></textarea></label>
+    <footer><span role="status"></span><button type="submit" data-copy="download"></button></footer>
+  </form>
+</dialog>
+<script src="$GODOT_URL"></script><script>window.AI_SIMS_ENGINE_CONFIG=$GODOT_CONFIG;</script><script type="module" src="app.mjs"></script></body></html>

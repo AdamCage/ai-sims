@@ -4,7 +4,7 @@ const DEVICE_APPS := ["contacts","messages","gallery","forum","votes","pages","g
 
 const SCHEMAS := {
 	"wait": {"minutes":"number?"}, "look": {}, "turn": {"degrees":"number"}, "set_goal":{"text":"string"},
-	"move": {"forward":"number", "right":"number"}, "move_to": {"target":"string"},
+	"move": {"forward":"number", "right":"number"}, "move_to": {"target":"string"}, "follow_route":{"route":"string"},
 	"take": {"target":"string?"}, "put": {"slot":"integer", "target":"string?"},
 	"give": {"slot":"integer", "target":"string"}, "consume": {"slot":"integer"},
 	"rest": {"minutes":"number?"}, "sleep": {"minutes":"number?"}, "wake": {},
@@ -92,10 +92,11 @@ static func _bad(message: String) -> Dictionary:
 	return {"ok":false,"action":{"type":"wait"},"error":message}
 
 static func instructions() -> String:
-	return "Return exactly one JSON intention with a type and only the documented fields. " + \
+	return "Each action must have a type and only the documented fields. " + \
 		"Targets use temporary visual refs from your own current image, never world IDs. " + \
 		"Inventory slot numbers refer only to your own inventory. Positive turn is left. " + \
 		"move forward/right are metres relative to your gaze, total at most five. " + \
+		"After personally reading a physical noticeboard, follow_route accepts a route ref from the printed floor plan in your personal_results. A labelled destination gives no information about occupants, stock or which evacuation order is current. " + \
 		"move_to ONLY approaches a currently perceived target; it does not take, consume, open or interact. " + \
 		"For food, across separate decisions: approach if needed, take the CURRENT nearby food ref, then consume its own inventory slot. After arrival choose the interaction instead of repeating move_to. " + \
 		"send_message.contact uses contacts[].ref such as c0 or g0, never a display name. Open messages and read_screen to obtain your scoped message refs before read_message. " + \

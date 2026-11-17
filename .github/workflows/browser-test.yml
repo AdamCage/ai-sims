@@ -1,0 +1,76 @@
+name: Browser build and Safari acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/public-release]
+    paths:
+      - ".github/workflows/browser-test.yml"
+      - "assets/**"
+      - "project.godot"
+      - "export_presets.cfg"
+      - "scenes/**"
+      - "scripts/**"
+      - "tools/*web*"
+      - "tools/install_godot_ci.ps1"
+      - "tests/browser_safari.py"
+      - "web/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    env:
+      GODOT_VERSION: 4.7.2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install verified editor and web template
+        shell: pwsh
+        run: ./tools/install_godot_ci.ps1 -TemplateFiles @('web_nothreads_release.zip','version.txt')
+      - name: Export browser game
+        shell: pwsh
+        run: ./tools/build_web.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AI-Sims-Web
+          path: build/web/
+          retention-days: 7
+          if-no-files-found: error
+
+  safari:
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: AI-Sims-Web
+          path: build/web/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run the exported game in Apple Safari
+        run: |
+          python -m pip install selenium
+          sudo safaridriver --enable
+          python -m http.server 8732 --bind 127.0.0.1 --directory build/web > "$RUNNER_TEMP/ai-sims-http.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          python tests/browser_safari.py --url http://127.0.0.1:8732/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: safari-acceptance
+          path: |
+            test-output/beta-browser-safari/*.json
+            test-output/beta-browser-safari/*.png
+          if-no-files-found: ignore
+          retention-days: 7

@@ -3,22 +3,32 @@
   "models": {
     "human_male": "res://assets/release/characters/human_male.glb",
     "human_female": "res://assets/release/characters/human_female.glb",
-    "bed": "res://assets/release/props/bedSingle.glb",
-    "bunk": "res://assets/release/props/bedBunk.glb",
-    "hospital_bed": "res://assets/release/props/bedSingle.glb",
-    "table": "res://assets/release/props/table.glb",
-    "chair": "res://assets/release/props/chair.glb",
-    "shelf": "res://assets/release/props/bookcaseOpen.glb",
-    "locker": "res://assets/release/props/kitchenFridge.glb",
-    "cabinet": "res://assets/release/props/cabinetBed.glb",
-    "plant": "res://assets/release/props/pottedPlant.glb",
-    "desk": "res://assets/release/props/desk.glb",
-    "sofa": "res://assets/release/props/chairDesk.glb",
+    "bed": "res://assets/release/props/alpha_bed.glb",
+    "bunk": "res://assets/release/props/alpha_bed.glb",
+    "hospital_bed": "res://assets/release/props/alpha_medicalbed.glb",
+    "table": "res://assets/release/props/alpha_table.glb",
+    "chair": "res://assets/release/props/alpha_chair.glb",
+    "shelf": "res://assets/release/props/alpha_shelf.glb",
+    "locker": "res://assets/release/props/alpha_locker.glb",
+    "cabinet": "res://assets/release/props/alpha_wardrobe.glb",
+    "plant": "res://assets/release/props/alpha_plant.glb",
+    "desk": "res://assets/release/props/alpha_desk.glb",
+    "sofa": "res://assets/release/props/alpha_sofa.glb",
     "computer": "res://assets/release/props/computerScreen.glb",
     "lamp": "res://assets/release/props/lampRoundFloor.glb",
     "sink": "res://assets/release/props/bathroomSink.glb",
     "toilet": "res://assets/release/props/toilet.glb",
-    "crate": "res://assets/release/props/cardboardBoxClosed.glb"
+    "crate": "res://assets/release/props/alpha_crate.glb",
+    "medicalbed": "res://assets/release/props/alpha_medicalbed.glb",
+    "wardrobe": "res://assets/release/props/alpha_wardrobe.glb",
+    "console": "res://assets/release/props/alpha_console.glb",
+    "labdesk": "res://assets/release/props/alpha_labdesk.glb",
+    "terminal": "res://assets/release/props/alpha_terminal.glb",
+    "shop": "res://assets/release/props/alpha_shop.glb",
+    "noticeboard": "res://assets/release/props/alpha_noticeboard.glb",
+    "counter": "res://assets/release/props/alpha_counter.glb",
+    "network_console": "res://assets/release/props/alpha_console.glb",
+    "ration_terminal": "res://assets/release/props/alpha_terminal.glb"
   },
   "textures": {
     "floor": {
@@ -73,6 +83,17 @@
       "author": "AI Sims project",
       "url": "tools/build_materials.py",
       "license": "CC0-1.0"
+    },
+    {
+      "author": "AI Sims project",
+      "url": "tools/build_alpha_props.py",
+      "license": "CC0-1.0",
+      "description": "Original alpha furniture with rounded fittings and shared palette"
+    },
+    {
+      "author": "AI Sims project",
+      "url": "assets/release/ui/story_locations.png",
+      "description": "Original, project-generated illustration, composed as a triptych for the story picker."
     }
   ],
   "files": [
@@ -108,13 +129,13 @@
     },
     {
       "path": "assets/release/characters/human_female.glb",
-      "sha256": "717615f1dbc7bf23cb18ab726b29fb068f315ccf9623a21abd24edebb5ce1e39",
-      "bytes": 11250664
+      "sha256": "9645bce097907a30b0b55529255ca97320f1a80d2c0ad7b987e3ae7bcfca7e41",
+      "bytes": 13646312
     },
     {
       "path": "assets/release/characters/human_female_fabric_color.png",
-      "sha256": "2e2719b25e8f246db086119e87cd8a137e543b6bf7248c1f540f9101451d6893",
-      "bytes": 136874
+      "sha256": "edda032d92f024a52f06380fcb60c76810af89eb3761f225dd1c871754d8a4e3",
+      "bytes": 207490
     },
     {
       "path": "assets/release/characters/human_female_T_Eye_Brown.png",
@@ -163,13 +184,13 @@
     },
     {
       "path": "assets/release/characters/human_male.glb",
-      "sha256": "43dc76e7ce3249112cf6b9553a174ddcabe9d12d7c965f37b271676f4261596a",
-      "bytes": 12421240
+      "sha256": "ae3816827c3f56ce38dec3cdccbce863075eef4fc6bff55504b2e88da68f8798",
+      "bytes": 13037976
     },
     {
       "path": "assets/release/characters/human_male_fabric_color.png",
-      "sha256": "2e2719b25e8f246db086119e87cd8a137e543b6bf7248c1f540f9101451d6893",
-      "bytes": 136874
+      "sha256": "edda032d92f024a52f06380fcb60c76810af89eb3761f225dd1c871754d8a4e3",
+      "bytes": 207490
     },
     {
       "path": "assets/release/characters/human_male_T_Eye_Brown.png",
@@ -220,6 +241,91 @@
       "path": "assets/release/characters/human_male_T_Superhero_Male_Roughness.png",
       "sha256": "08645de7b37e038ca3c01939a987dcc2cee9f3c0424b3a6c58b8c6d20205b968",
       "bytes": 846264
+    },
+    {
+      "path": "assets/release/props/alpha_bed.glb",
+      "sha256": "a0a9daf39171ca7a051520a038f571085646b179f4e5b73d1340cbb1fb701c41",
+      "bytes": 53664
+    },
+    {
+      "path": "assets/release/props/alpha_chair.glb",
+      "sha256": "15fcdb00063f8a56f41357ffe9d39970e7026042736aeec6f6bc38779f0d5791",
+      "bytes": 42144
+    },
+    {
+      "path": "assets/release/props/alpha_console.glb",
+      "sha256": "192ebb6751dee7550b76a666858f891efe359d55c9824e674e458aaeccaf6725",
+      "bytes": 92724
+    },
+    {
+      "path": "assets/release/props/alpha_counter.glb",
+      "sha256": "3906390c6601ec88742a3b5c7066d28ecd65e02647bb0072a23accb65e68c7d2",
+      "bytes": 32440
+    },
+    {
+      "path": "assets/release/props/alpha_crate.glb",
+      "sha256": "d7f2aedd910bd781556437977c9dae66ef235d692090cf45552faf24d76f7dac",
+      "bytes": 22668
+    },
+    {
+      "path": "assets/release/props/alpha_desk.glb",
+      "sha256": "e64bb2634839adb8c89be0e7b8f9374054da686e5d0f019af6fbb0b42c3d9c41",
+      "bytes": 79312
+    },
+    {
+      "path": "assets/release/props/alpha_labdesk.glb",
+      "sha256": "31547bcbc896c63439c96961b5e5bd0f792142d0c44abf7c68d70617860f75ca",
+      "bytes": 90424
+    },
+    {
+      "path": "assets/release/props/alpha_locker.glb",
+      "sha256": "6f8383cdaf1a042d72c71c25684d59c48fc1f11eb23ace32146058e0da4515f6",
+      "bytes": 57736
+    },
+    {
+      "path": "assets/release/props/alpha_medicalbed.glb",
+      "sha256": "401298b66cadf4a2bc682c3bad61a8e3b07aeeb2d22eb9f979a4ead3ba75f871",
+      "bytes": 98108
+    },
+    {
+      "path": "assets/release/props/alpha_noticeboard.glb",
+      "sha256": "f4d53f88e00be771e6848f0f2a23c283bcb91a9b5b044e02ecdca36479defde5",
+      "bytes": 28560
+    },
+    {
+      "path": "assets/release/props/alpha_plant.glb",
+      "sha256": "c58e261dae8c97a23ce3f4e24d795928479e847e0f935ddf70e8a4ce010bcf7b",
+      "bytes": 43492
+    },
+    {
+      "path": "assets/release/props/alpha_shelf.glb",
+      "sha256": "2344e794435bdf82e1b776ac67fed091b705c6e0c9f3e576425bd00cca4b37e5",
+      "bytes": 82900
+    },
+    {
+      "path": "assets/release/props/alpha_shop.glb",
+      "sha256": "878fc9e031675afb58ba9e008d795d0ea2f3ce9b690aba2cb2b5a53fdbb200ce",
+      "bytes": 74064
+    },
+    {
+      "path": "assets/release/props/alpha_sofa.glb",
+      "sha256": "e11fea63dcc16266167f399fcad2a459dfdee9fe5e0d90e12d879b276d2bb9e8",
+      "bytes": 56192
+    },
+    {
+      "path": "assets/release/props/alpha_table.glb",
+      "sha256": "c37dcce528828a2569a2e6d630e86211872a8f307c0d4b6af9b87a4fcc8206f0",
+      "bytes": 26564
+    },
+    {
+      "path": "assets/release/props/alpha_terminal.glb",
+      "sha256": "5bff3010b605356d504b90ba36579f40b682c057939f52237305b783010e2c2f",
+      "bytes": 33336
+    },
+    {
+      "path": "assets/release/props/alpha_wardrobe.glb",
+      "sha256": "b43ee22903b3df2d0d06a0ac346a0723ad55adea70dd3cf56689188dcfd2bf08",
+      "bytes": 27624
     },
     {
       "path": "assets/release/props/bathroomSink.glb",
@@ -328,93 +434,98 @@
     },
     {
       "path": "assets/release/textures/fabric_color.png",
-      "sha256": "2e2719b25e8f246db086119e87cd8a137e543b6bf7248c1f540f9101451d6893",
-      "bytes": 136874
+      "sha256": "edda032d92f024a52f06380fcb60c76810af89eb3761f225dd1c871754d8a4e3",
+      "bytes": 207490
     },
     {
       "path": "assets/release/textures/fabric_normal.png",
-      "sha256": "acf243e14a04de994e383d666837238c8a66e5c47243418a6c9dda31a35672ad",
-      "bytes": 5599
+      "sha256": "e82d80585a5f052823072dbdb4e247183af6ea2b559eab2d0712938a68fee858",
+      "bytes": 515460
     },
     {
       "path": "assets/release/textures/fabric_roughness.png",
-      "sha256": "dfd00931676ca067a788dc923a9da9465746617be208867e673406bfb80ec6d1",
-      "bytes": 1488
+      "sha256": "6e182f3428fa9f6580bca464f138439646c144caeff2d0660365df260bc3c57a",
+      "bytes": 17225
     },
     {
       "path": "assets/release/textures/floor_color.png",
-      "sha256": "5df37205701070f0bdbaee6731d3b45895f06e8ca33993472cba5566c5ee7a73",
-      "bytes": 134371
+      "sha256": "9941533110b924536ad8a791c8236158153011502cbe22dd64f832108b880275",
+      "bytes": 157738
     },
     {
       "path": "assets/release/textures/floor_normal.png",
-      "sha256": "6ce727425f350b6ae7fa8e3364b107c23fd42f152aa48f0ea1b9dc2822b363e4",
-      "bytes": 17028
+      "sha256": "0dc3bb361c4c36d3c549874d68b7b5c6908d657b0fef6d852efc8228fb396fa9",
+      "bytes": 149453
     },
     {
       "path": "assets/release/textures/floor_roughness.png",
-      "sha256": "dfd00931676ca067a788dc923a9da9465746617be208867e673406bfb80ec6d1",
-      "bytes": 1488
+      "sha256": "661594c20a9ccb1996c84618f1f079da93b7b08a037ea1ad7a36337320ab2cda",
+      "bytes": 128122
     },
     {
       "path": "assets/release/textures/metal_color.png",
-      "sha256": "b01bf6d8bb8b95fca51571959a872a1eb2a85387f0cffd13e20cc6b4466ed064",
-      "bytes": 101652
+      "sha256": "96cd097bea72bb92a3648220357d7b9161ee67ff63751162cf07c255444bc95f",
+      "bytes": 108269
     },
     {
       "path": "assets/release/textures/metal_normal.png",
-      "sha256": "b28d57c7df4000daefd7131ccb830d65c7228acfafd204ec1e9a6b8f7cf5ab96",
-      "bytes": 2655
+      "sha256": "f2b34d60179b4b5509ee6d7bd4c0401706f7f47754014c049cf9fd276f444a0c",
+      "bytes": 29360
     },
     {
       "path": "assets/release/textures/metal_roughness.png",
-      "sha256": "f8633a5c569d8da2d055a74185c44c6ac72ee67a4c520d7ba35330c0865db0ed",
-      "bytes": 1487
+      "sha256": "ef570430cc329e5c55a78ccf42eaa5911f4a2c9e517a8dbce692a72962ef9c5e",
+      "bytes": 16726
     },
     {
       "path": "assets/release/textures/tile_color.png",
-      "sha256": "7db57b465925c89ef2ad8d78565e69597c15226d767011b123e04863fef8baed",
-      "bytes": 88101
+      "sha256": "507bc16083a44f636c84edb531f4ba4c3893fe0e466ddc5a11b19177a0b9701c",
+      "bytes": 47338
     },
     {
       "path": "assets/release/textures/tile_normal.png",
-      "sha256": "1227c4e97c914f1d5ee1076d002e83b9d27c18ee6de5a8f2c48905e90f50fbd7",
-      "bytes": 1493
+      "sha256": "8c1375b5f2f653b3be5be1e3242e6c986929c2dc3c807da0c330a4a6b421c7a7",
+      "bytes": 91004
     },
     {
       "path": "assets/release/textures/tile_roughness.png",
-      "sha256": "dfd00931676ca067a788dc923a9da9465746617be208867e673406bfb80ec6d1",
-      "bytes": 1488
+      "sha256": "e2a37c6e9ae5c6d404f63feed3d211efbbff2b739e557cd22c70352503e6db13",
+      "bytes": 35961
     },
     {
       "path": "assets/release/textures/wall_color.png",
-      "sha256": "b96dab01fac82c43892298ac949c5a0819bae87a0ac7fe60ac0389bb3b83dce8",
-      "bytes": 115939
+      "sha256": "0ea1d5de6a72ec123764f4c1ca8c69414a8cd9a27514e9d5e8db395baf2387f8",
+      "bytes": 269788
     },
     {
       "path": "assets/release/textures/wall_normal.png",
-      "sha256": "22bbed10f617550dbd5c448dc2c96b2f48b80586f0e3bd7095a7c9aaf47c7e46",
-      "bytes": 148351
+      "sha256": "ba50daa434d96cba57db88d0a0fcdfa18d55bde02fe527d279ad0f7f1046bb4e",
+      "bytes": 823504
     },
     {
       "path": "assets/release/textures/wall_roughness.png",
-      "sha256": "dfd00931676ca067a788dc923a9da9465746617be208867e673406bfb80ec6d1",
-      "bytes": 1488
+      "sha256": "0cfdc300c296fedea764fa8325911c70d5d9e5fd9272d5c545b3b623f4fdc34c",
+      "bytes": 102543
     },
     {
       "path": "assets/release/textures/wood_color.png",
-      "sha256": "7f4d59d0656d8ec20b842b633a5c71aa7dfb92fe341a92f065bfb35e2080da98",
-      "bytes": 176725
+      "sha256": "c3ea70fae4964ac18da5ea298feee280b78d8b6e0ea47a55ee45eb2cab70baeb",
+      "bytes": 149982
     },
     {
       "path": "assets/release/textures/wood_normal.png",
-      "sha256": "bc4c6dacb56c66e369801f1b7b091bb169830f4dc85eaec5ff0d8c1d85a928ad",
-      "bytes": 4523
+      "sha256": "3b5eac2b072b6e31ef098666908916227068f3faaf607484b3c7ba0b094158d0",
+      "bytes": 231335
     },
     {
       "path": "assets/release/textures/wood_roughness.png",
-      "sha256": "dfd00931676ca067a788dc923a9da9465746617be208867e673406bfb80ec6d1",
-      "bytes": 1488
+      "sha256": "529994b648d7c871b8b938da9894df76816af94b420ad7908a91cc62b5ab157b",
+      "bytes": 104852
+    },
+    {
+      "path": "assets/release/ui/story_locations.png",
+      "sha256": "248b7ca24c1ac5e2eb12f662fe9fcbbab713a9af59290daa69558f463103f27f",
+      "bytes": 2922089
     }
   ]
 }

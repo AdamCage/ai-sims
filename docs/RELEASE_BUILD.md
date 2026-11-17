@@ -1,3 +1,16 @@
+# Сборка браузерной версии
+
+В Windows установите Godot 4.7.2 со стандартными web export templates и Node.js. Из корня репозитория выполните следующую команду.
+
+```powershell
+.\tools\build_web.ps1
+python -m http.server 8732 --bind 127.0.0.1 --directory build/web
+```
+
+Откройте [AI Sims](http://127.0.0.1:8732/). Для распространения отдавайте всё содержимое `build/web` с одного статического HTTPS-адреса. Обычный HTTP работает на loopback. Приложение использует WebGL 2, WebAssembly, Web Locks, IndexedDB и DecompressionStream. Браузеру нужен доступ к файлам при первой загрузке карты. Для подключения RouterAI ему также нужен выход к провайдеру.
+
+Экспорт использует одиночный поток Godot и отдельный JS-воркер для PNG. Имена пакетов, скриптов и движка содержат хеши. Обновляйте сборку целиком. Для сохранения старых игр используйте прежний origin. Перед сменой домена игрок может скачать резервную копию.
+
 # Windows standalone release build
 
 The release package is a Windows 10/11 x64 Godot export: `AI-Sims.exe` plus `AI-Sims.pck`, attribution, asset provenance and checksum metadata. It does not need an installed Godot editor or Python. The local Windows Credential Manager bridge is compiled against the system .NET Framework 4.x and embedded as a raw PCK file. API credentials, saves and spending ledgers are user data and are never part of the package.

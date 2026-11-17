@@ -4,6 +4,7 @@ extends RefCounted
 
 const SCALE: int = 1000000
 const Credentials = preload("res://scripts/release_storage/credential_store.gd")
+const WebBridge = preload("res://scripts/release_storage/web_bridge.gd")
 var limit_microrub: int = 1000 * SCALE
 var max_parallel: int = 4
 var _entries: Dictionary = {}
@@ -23,6 +24,12 @@ func configure(limit_rub: float = 1000.0, storage_path: String = "", parallel: i
 	if not _storage_path.is_empty():
 		var writable: bool = _acquire_storage_lease()
 		if not writable:_persist_error = "usage_ledger_in_use"
+		if WebBridge.is_web():
+			var stored := WebBridge.ledger_json()
+			if not stored.is_empty() and not _merge_state(JSON.parse_string(stored),writable,false,writable):
+				_persist_error="usage_ledger_corrupt";return
+			if writable:_persist_error="";_persist()
+			return
 		var loaded: bool = false
 		var existing: bool = false
 		for candidate_path in [_storage_path,_storage_path + ".bak"]:
@@ -44,6 +51,7 @@ func configure(limit_rub: float = 1000.0, storage_path: String = "", parallel: i
 	else:_persist_error = ""
 
 func reserve(request_id: String, estimate_rub: float, role: String = "action") -> Dictionary:
+	if WebBridge.is_web() and not str(WebBridge.status().get("storage_error","")).is_empty():_persist_error="browser_ledger_write_failed"
 	if not _storage_path.is_empty() and not _has_storage_lease():_persist_error = "usage_ledger_lease_lost" if not _lease.is_empty() else "usage_ledger_in_use"
 	if not _persist_error.is_empty():
 		return {"ok":false,"error":"ledger_persistence_failed"}
@@ -57,7 +65,7 @@ func reserve(request_id: String, estimate_rub: float, role: String = "action") -
 		return {"ok":false,"error":"parallel_limit","retryable":true}
 	if int(totals.committed) + estimate > limit_microrub:
 		return {"ok":false,"error":"budget_exhausted","retryable":false}
-	_entries[request_id] = {"id":request_id,"role":role,"estimate":estimate,"actual":0,"state":"reserved","metadata":{},"owner_pid":OS.get_process_id(),"owner_instance":_owner_instance}
+	_entries[request_id] = {"id":request_id,"role":role,"estimate":estimate,"actual":0,"state":"reserved","metadata":{},"owner_pid":maxi(1,OS.get_process_id()),"owner_instance":_owner_instance}
 	_totals_cache.clear()
 	_persist()
 	if not _persist_error.is_empty():
@@ -98,6 +106,7 @@ func abandon(request_id: String, uncertain: bool = true) -> bool:
 	return true
 
 func status() -> Dictionary:
+	if WebBridge.is_web() and not str(WebBridge.status().get("storage_error","")).is_empty():_persist_error="browser_ledger_write_failed"
 	var sums := _totals()
 	return {"limit_rub":float(limit_microrub) / SCALE,
 		"spent_rub":float(sums.spent) / SCALE,"reserved_rub":float(sums.reserved) / SCALE,
@@ -169,7 +178,7 @@ static func _committed(entry: Dictionary) -> int:
 
 static func _safe_metadata(raw: Dictionary) -> Dictionary:
 	var clean: Dictionary = {}
-	for key in ["requested_model","returned_model","prompt_tokens","completion_tokens","total_tokens","role","error","currency"]:
+	for key in ["requested_model","returned_model","prompt_tokens","completion_tokens","total_tokens","role","error","currency","generation_ref","cost_source"]:
 		var value: Variant = raw.get(key)
 		if value is String:
 			clean[key] = value.left(256)
@@ -201,6 +210,9 @@ func _persist() -> void:
 	if not _has_storage_lease():
 		_persist_error = "usage_ledger_in_use"
 		return
+	if WebBridge.is_web():
+		_persist_error="" if WebBridge.persist_ledger(JSON.stringify(export_state()))>=0 else "browser_ledger_write_failed"
+		return
 	var temp_path: String = _storage_path + ".tmp"
 	var file := FileAccess.open(temp_path, FileAccess.WRITE)
 	if file == null:
@@ -224,6 +236,9 @@ func _persist() -> void:
 func _acquire_storage_lease() -> bool:
 	if _has_storage_lease() and _lease_path == _storage_path:return true
 	if not _lease.is_empty():release_storage_lease()
+	if WebBridge.is_web():
+		if not WebBridge.ready() or not WebBridge.has_lease():return false
+		_lease={"web":true};_lease_path=_storage_path;return true
 	if OS.get_name() != "Windows":return false
 	var binary: String = Credentials.new().helper_path()
 	if binary.is_empty():return false
@@ -241,10 +256,12 @@ func _acquire_storage_lease() -> bool:
 	return true
 
 func _has_storage_lease() -> bool:
+	if WebBridge.is_web():return not _lease.is_empty() and WebBridge.has_lease()
 	return not _lease.is_empty() and OS.is_process_running(int(_lease.get("pid",0)))
 
 func release_storage_lease() -> void:
 	if _lease.is_empty():return
+	if WebBridge.is_web():_lease.clear();_lease_path="";return
 	var pid: int = int(_lease.get("pid",0))
 	var pipe: FileAccess = _lease.stdio
 	if pipe.is_open():
@@ -261,5 +278,6 @@ func _notification(what: int) -> void:
 	# RefCounted has no callable self during PREDELETE. Closing its inherited
 	# stdin inline releases the helper mutex even on ordinary reference cleanup.
 	if what == NOTIFICATION_PREDELETE and not _lease.is_empty():
+		if WebBridge.is_web():return
 		_lease.stdio.close()
 		if _lease.has("stderr"):_lease.stderr.close()

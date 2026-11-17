@@ -6,6 +6,7 @@ const Maps = preload("res://scripts/game/map_catalog.gd")
 const Spatial = preload("res://scripts/game/spatial_rules.gd")
 const Actions = preload("res://scripts/game/action_catalog.gd")
 const Society = preload("res://scripts/game/society_rules.gd")
+const Episodes = preload("res://scripts/game/episode_rules.gd")
 const REACH := 1.6
 var state: Dictionary = {}
 var _serial := 0
@@ -13,6 +14,8 @@ var _refs: Dictionary = {}
 var _intentions: Dictionary = {}
 var _new_events: Array = []
 var _next_item := 0
+var _observation_captures:Dictionary={}
+var _capture_serial:=0
 
 func _init() -> void:
 	reset()
@@ -20,16 +23,83 @@ func _init() -> void:
 func get_map_catalog()->Array:
 	return Maps.catalog()
 
-func reset(map_id:String="closed_block",count:int=7,scenario:String="scarcity",seed_value:int=1)->Dictionary:
+func reset(map_id:String="closed_block",count:int=8,scenario:String="episode",seed_value:int=1)->Dictionary:
 	_serial+=1
 	state=Maps.create(map_id,count,scenario,seed_value)
 	state.run_id=_serial
 	_refs.clear();_intentions.clear();_new_events.clear();_next_item=1000
+	_observation_captures.clear()
+	_update_activity_statuses()
 	_event("world","session_started",true,"Началась новая сессия: %s, %d персонажей."%[state.map_name,state.agents.size()],{})
 	return snapshot()
 
 func snapshot()->Dictionary:
 	return state.duplicate(true)
+
+func capture_observation_refs(actor_id:String)->Dictionary:
+	if not state.agents.has(actor_id):return {}
+	_capture_serial+=1
+	var token:String="%d:%d"%[int(state.run_id),_capture_serial]
+	var refs:Dictionary=_refs.get(actor_id,{}).duplicate(true)
+	var actor:Dictionary=state.agents[actor_id]
+	_observation_captures[token]={"actor":actor_id,"run":int(state.run_id),"minute":float(state.minute),"refs":refs.duplicate(true),"service_refs":actor.get("service_refs",{}).duplicate(true),"contacts":actor.contacts.duplicate(true),"groups":actor.get("group_refs",{}).duplicate(true)}
+	for old_token in _observation_captures.keys():
+		if float(state.minute)-float(_observation_captures[old_token].minute)>60.0:_observation_captures.erase(old_token)
+	refs["_capture_token"]=token
+	return refs
+
+func restrict_observation_refs(actor_id:String,refs:Dictionary,targets:Array)->Dictionary:
+	var token:String=str(refs.get("_capture_token",""))
+	var capture:Dictionary=_observation_captures.get(token,{})
+	if capture.is_empty() or capture.actor!=actor_id:return {}
+	var allowed:Dictionary={}
+	for target in targets:
+		if target is Dictionary:
+			var ref:=str(target.get("ref",""))
+			if capture.refs.has(ref):allowed[ref]=capture.refs[ref]
+	capture.refs=allowed
+	var result:=allowed.duplicate(true)
+	result["_capture_token"]=token
+	return result
+
+func submit_observed(actor_id:String,action:Dictionary,refs:Dictionary,expected_run:int,observation_minute:float)->Dictionary:
+	if expected_run!=int(state.run_id):return _result(false,"Устаревшее поколение сессии.")
+	var capture:Dictionary=_observation_captures.get(str(refs.get("_capture_token","")),{})
+	if capture.is_empty() or capture.actor!=actor_id or int(capture.run)!=expected_run:return _result(false,"Нет допустимого личного снимка наблюдения.")
+	if not is_finite(observation_minute) or not is_equal_approx(observation_minute,float(capture.minute)) or float(state.minute)-observation_minute>30.0 or observation_minute>float(state.minute):return _result(false,"Наблюдение устарело; требуется новый личный осмотр.")
+	if not state.agents.has(actor_id) or not state.agents[actor_id].alive:return _result(false,"Исполнитель недоступен.")
+	var checked:Dictionary=Actions.validate(action)
+	if not checked.ok:return _result(false,checked.error)
+	if not _observed_scopes_valid(actor_id,action,capture):return _result(false,"Личный контекст устройства изменился; прочитайте доступный экран заново.")
+	var resolved:Dictionary={}
+	if action.has("target"):
+		resolved=capture.refs.get(str(action.target),{}).duplicate(true)
+		if resolved.is_empty():return _result(false,"Цель не принадлежит этому личному наблюдению.")
+	elif action.type=="take":
+		var nearest:float=INF
+		for link in capture.refs.values():
+			if link.get("category")!="item" or not _reachable(actor_id,link):continue
+			var distance:float=Spatial.point(state.agents[actor_id]).distance_to(Spatial.point(_entity(link)))
+			if distance<nearest:nearest=distance;resolved=link.duplicate(true)
+		if resolved.is_empty():return _result(false,"Нет ранее замеченного доступного предмета рядом.")
+	resolved["_observed"]=true
+	_intentions[actor_id]={"action":checked.action,"resolved":resolved,"run_id":expected_run,"observation":capture.duplicate(true)}
+	return _result(true,"Намерение привязано к личному наблюдению.")
+
+func _observed_scopes_valid(actor_id:String,action:Dictionary,capture:Dictionary)->bool:
+	var actor:Dictionary=state.agents[actor_id]
+	for pair in [["message","messages"],["topic","topics"],["poll","polls"],["page","pages"],["route","routes"]]:
+		if not action.has(pair[0]):continue
+		var ref:String=str(action[pair[0]])
+		var frozen:String=str(capture.service_refs.get(pair[1],{}).get(ref,""))
+		if frozen.is_empty() or frozen!=str(actor.get("service_refs",{}).get(pair[1],{}).get(ref,"")):return false
+	if action.has("contact"):
+		var ref:String=str(action.contact)
+		if not ref.is_empty() and capture.contacts.get(ref,capture.groups.get(ref,""))!=actor.contacts.get(ref,actor.get("group_refs",{}).get(ref,"")):return false
+	if action.has("members"):
+		for ref in action.members:
+			if not capture.contacts.has(ref) or capture.contacts[ref]!=actor.contacts.get(ref,""):return false
+	return true
 
 func submit(actor_id:String,action:Dictionary,expected_run_id:int=-1)->Dictionary:
 	if expected_run_id!=-1 and expected_run_id!=int(state.run_id):return _result(false,"Устаревшее поколение сессии.")
@@ -59,9 +129,11 @@ func advance(minutes:float)->Array:
 			var packet:Dictionary=_intentions[id]
 			if int(packet.run_id)==int(state.run_id):
 				var action:Dictionary=packet.action
-				var result:Dictionary=_execute(id,action,packet.resolved)
+				var result:Dictionary=_execute(id,action,packet.resolved) if not packet.has("observation") or _observed_scopes_valid(id,action,packet.observation) else _result(false,"Личный контекст изменился; требуется новый осмотр.")
 				state.agents[id].last_action=action.duplicate(true)
 				state.agents[id].last_result={"type":action.type,"ok":result.ok,"message":result.reason}
+				state.agents[id]["last_acquisition_ticket"]=str(result.details.get("ticket","")) if result.ok and action.type=="join_queue" else ""
+				state.agents[id]["last_acquired_item"]=str(result.details.get("item","")) if result.ok and action.type in ["take","request_ration","interact","buy","join_queue"] else ""
 				_event(id,action.type,result.ok,result.reason,result.get("details",{}))
 	_intentions.clear()
 	state.minute=float(state.minute)+minutes
@@ -87,8 +159,17 @@ func advance(minutes:float)->Array:
 	for actor in state.agents.values():
 		if not str(actor.carried_by).is_empty() and state.agents.has(actor.carried_by):actor.position=state.agents[actor.carried_by].position.duplicate()
 	Society.advance(self,minutes)
+	Episodes.advance(self)
 	_update_objectives()
+	_update_activity_statuses()
 	return _new_events.duplicate(true)
+
+func acquisition_receipt(actor_id:String,ticket:String)->String:
+	if ticket.is_empty() or not state.agents.has(actor_id):return ""
+	for item_id in state.terminal.loans:
+		var loan:Dictionary=state.terminal.loans[item_id]
+		if loan.actor==actor_id and loan.get("ticket","")==ticket and state.agents[actor_id].inventory.has(item_id):return str(item_id)
+	return ""
 
 func _execute(id:String,action:Dictionary,resolved:Dictionary)->Dictionary:
 	var actor:Dictionary=state.agents[id]
@@ -109,8 +190,10 @@ func _execute(id:String,action:Dictionary,resolved:Dictionary)->Dictionary:
 			var rad:=deg_to_rad(float(actor.heading))
 			var destination:=Spatial.point(actor)+Vector2(-sin(rad),-cos(rad))*float(action.forward)+Vector2(cos(rad),-sin(rad))*float(action.right)
 			return _begin_travel(id,destination,"")
+		"follow_route":return _follow_printed_route(id,str(action.route))
 		"move_to":
 			var target:=_entity(resolved)
+			if resolved.get("_observed",false):return _begin_travel(id,Vector2(float(resolved.position[0]),float(resolved.position[1])),str(resolved.get("id","")))
 			if target.is_empty():return _result(false,"Цель исчезла.")
 			return _begin_travel(id,Spatial.point(target),str(resolved.id))
 		"take":
@@ -139,16 +222,18 @@ func _execute(id:String,action:Dictionary,resolved:Dictionary)->Dictionary:
 			var item:=_inventory_item(id,int(action.slot))
 			if item.is_empty():return _result(false,"Слот пуст.")
 			actor.inventory.erase(item.id);receiver.inventory.append(item.id);item.holder=receiver.id;item.owner=receiver.id
+			item["given_by"]=id
 			_relation(str(receiver.id),id,8.0,"Получил помощь: "+str(item.label));_objective("share")
-			return _result(true,"Передано: %s → %s."%[item.label,receiver.name],{"item":item.id,"recipient":receiver.id})
+			return _result(true,"Передано: %s → %s."%[item.label,receiver.name],{"item":item.id,"kind":item.kind,"recipient":receiver.id})
 		"consume":
 			var item:=_inventory_item(id,int(action.slot))
 			if item.is_empty() or item.kind not in ["ration","water"]:return _result(false,"В этом слоте нет съедобного запаса.")
 			if _hands(actor)==0:return _result(false,"Нужна помощь, чтобы поесть.")
 			actor.needs.hunger=maxf(0.0,float(actor.needs.hunger)-40.0)
+			var consumed:Dictionary={"item":item.id,"kind":item.kind,"given_by":item.get("given_by",""),"cause":item.get("event_seq",null)}
 			_consume_item(id,item)
 			actor.busy={"type":"consume","remaining":1.0}
-			return _result(true,"Потреблён реальный запас; голод уменьшился.")
+			return _result(true,"Съеден паёк." if item.kind=="ration" else "Выпита вода.",consumed)
 		"rest","sleep":
 			actor.sleeping=kind=="sleep"
 			actor.busy={"type":kind,"remaining":float(action.get("minutes",60.0 if kind=="sleep" else 10.0))}
@@ -165,8 +250,18 @@ func _execute(id:String,action:Dictionary,resolved:Dictionary)->Dictionary:
 				return _result(true,"Представились и обменялись контактами.")
 			if resolved.get("category")=="door":return _door_action(id,"open",resolved)
 			var target:=_entity(resolved)
+			if target.get("kind")=="noticeboard":
+				if actor.body.blind:return _result(false,"Текст таблички недоступен без зрения.")
+				_personal(id,{"channel":"document","text":str(target.get("document","")),"title":target.get("label",""),"source":"physical_notice","document":str(target.id)})
+				_read_floor_plan(id,target)
+				return _result(true,"Прочитана местная табличка.")
 			if target.get("storage",false):return _door_action(id,"open",resolved)
 			if target.get("kind")=="terminal":return Society.terminal_request(self,id,"ration")
+			if target.get("kind") in ["chair","sofa"]:
+				for other in state.agents.values():
+					if other.id!=id and other.busy.get("seat","")==target.id:return _result(false,"Это место уже занято.")
+				actor.busy={"type":"rest","remaining":10.0,"seat":target.id,"target":target.id}
+				return _result(true,"Отдыхает у места для сидения.")
 			if target.get("kind") in ["bed","medicalbed"]:
 				for other in state.agents.values():
 					if other.id!=id and other.busy.get("bed","")==target.id:return _result(false,"Кровать уже занята.")
@@ -175,6 +270,10 @@ func _execute(id:String,action:Dictionary,resolved:Dictionary)->Dictionary:
 				return _result(true,"Лёг спать на кровати.")
 			if target.get("kind")=="console":
 				if not actor.roles.has("network_admin"):return _result(false,"Нет прав управления сетью.")
+				if state.scenario=="station_exit" and not state.network.online:
+					state.network.online=true
+					_personal(id,{"channel":"console","text":"Связь восстановлена с физической консоли.","source":"network_console"})
+					return _result(true,"Связь восстановлена на консоли.",{"restored_network":true})
 				_personal(id,{"channel":"console","text":"Доступны управление связью и журнал контролируемого сервиса."});return _result(true,"Открыта консоль связи.")
 			if target.get("kind")=="shop":
 				_personal(id,{"channel":"shop","stock":state.economy.shop_stock.duplicate(true),"prices":state.economy.prices.duplicate(true)});return _result(true,"Осмотрен ассортимент магазина.")
@@ -183,7 +282,9 @@ func _execute(id:String,action:Dictionary,resolved:Dictionary)->Dictionary:
 		"defend":actor.defending_until=float(state.minute)+2.0;actor.busy={"type":"defend","remaining":2.0};return _result(true,"Приготовился защищаться.")
 		"flee":
 			var direction:=Vector2.from_angle(deg_to_rad(float(actor.heading)+90.0))
-			if not resolved.is_empty():direction=(Spatial.point(actor)-Spatial.point(_entity(resolved))).normalized()
+			if not resolved.is_empty():
+				var threat:=Spatial.point(resolved) if resolved.get("_observed",false) else Spatial.point(_entity(resolved))
+				direction=(Spatial.point(actor)-threat).normalized()
 			return _begin_travel(id,Spatial.point(actor)+direction*4.0,"")
 		"treat":return _treat(id,action,resolved)
 		"help":
@@ -195,7 +296,7 @@ func _execute(id:String,action:Dictionary,resolved:Dictionary)->Dictionary:
 			if float(other.needs.hunger)>50.0:
 				for slot in actor.inventory.size():
 					var item:Dictionary=state.items[actor.inventory[slot]]
-					if item.kind=="ration":other.needs.hunger=maxf(0.0,float(other.needs.hunger)-40.0);_consume_item(id,item);_relation(str(other.id),id,10.0,"Помог поесть.");return _result(true,"Помог пострадавшему поесть.")
+					if item.kind=="ration":other.needs.hunger=maxf(0.0,float(other.needs.hunger)-40.0);_consume_item(id,item);_relation(str(other.id),id,10.0,"Помог поесть.");return _result(true,"Помог пострадавшему поесть.",{"recipient":other.id,"fed":true})
 			other.unconscious=false;other.needs.fatigue=maxf(0.0,float(other.needs.fatigue)-10.0);return _result(true,"Оказал поддержку и помог прийти в себя.")
 		"carry":
 			if _hands(actor)<2:return _result(false,"Для переноски нужны обе руки.")
@@ -217,12 +318,55 @@ func _execute(id:String,action:Dictionary,resolved:Dictionary)->Dictionary:
 		"speak":_speak(id,str(action.text));return _result(true,"Произнесено сообщение вслух.")
 	return Society.execute(self,id,action,resolved)
 
-func _begin_travel(id:String,destination:Vector2,target_id:String)->Dictionary:
+func _read_floor_plan(id:String,board:Dictionary)->void:
+	var actor:Dictionary=state.agents[id]
+	if state.geometry.get("rooms",[]).is_empty():return
+	if not actor.has("service_refs"):actor["service_refs"]={}
+	if not actor.service_refs.has("routes"):actor.service_refs["routes"]={}
+	var entries:Array=[]
+	for room in state.geometry.rooms:
+		if not room.has("id"):continue
+		var ref:="r%d"%entries.size()
+		actor.service_refs.routes[ref]=room.id
+		entries.append({"ref":ref,"title":str(room.get("label",room.id))})
+	_personal(id,{"channel":"floor_plan","title":str(board.get("label","")),"text":"План общественных проходов. Названия обозначают места; часы работы и приказы следует сверять отдельно.","source":"physical_map","entries":entries})
+
+func _follow_printed_route(id:String,ref:String)->Dictionary:
+	var actor:Dictionary=state.agents[id]
+	var destination:String=str(actor.get("service_refs",{}).get("routes",{}).get(ref,""))
+	if destination.is_empty():return _result(false,"Сначала лично прочитайте схему у стенда.")
+	for room in state.geometry.get("rooms",[]):
+		if room.get("id")!=destination:continue
+		var center:=Spatial.point(room)
+		# Individual arrival points leave room for others approaching the same place.
+		var angle:float=deg_to_rad(float(posmod(str(id).hash()*53,360)))
+		var geometry:Dictionary=state.geometry.duplicate(false)
+		geometry.doors=[] # The printed plan shows passages, with no live door states.
+		for offset in [Vector2.from_angle(angle)*2.1,Vector2.from_angle(angle+PI/2)*1.75,Vector2.ZERO]:
+			var target:Vector2=center+offset
+			if not Spatial.walkable(target,geometry):continue
+			var result:=_begin_travel(id,target,"",true)
+			if result.ok:
+				actor.busy.target=room.label
+				return _result(true,"Идёт по схеме: "+str(room.label)+".",{"destination":room.label})
+		return _result(false,"Не удалось пройти к месту по опубликованной схеме.")
+	return _result(false,"Такого места на прочитанной схеме нет.")
+
+func _planned_route(actor:Dictionary,destination:Vector2,target_id:String,printed:bool)->Array:
+	if not printed:return Spatial.path(actor,destination,state.geometry,state.agents,target_id)
+	var mapped:Dictionary=state.geometry.duplicate(false)
+	mapped.doors=[]
+	var nearby:Dictionary={}
+	for other in state.agents.values():
+		if other.id!=actor.id and Spatial.point(actor).distance_to(Spatial.point(other))<3.0 and Spatial.visible(actor,Spatial.point(other),state.geometry):nearby[other.id]=other
+	return Spatial.path(actor,destination,mapped,nearby,"",true)
+
+func _begin_travel(id:String,destination:Vector2,target_id:String,printed:bool=false)->Dictionary:
 	var actor:Dictionary=state.agents[id]
 	if actor.body.left_leg=="broken" and actor.body.right_leg=="broken" and _hands(actor)==0:return _result(false,"Все четыре конечности сломаны: самостоятельное перемещение невозможно.")
 	if not str(actor.carried_by).is_empty():return _result(false,"Персонажа уже переносят.")
 	Spatial.learn(actor,state.geometry)
-	var route:Array=Spatial.path(actor,destination,state.geometry,state.agents,target_id)
+	var route:Array=_planned_route(actor,destination,target_id,printed)
 	if route.is_empty():return _result(false,"В известном пространстве нет доступного пути.")
 	if not target_id.is_empty():
 		var previous:=Spatial.point(actor)
@@ -232,6 +376,12 @@ func _begin_travel(id:String,destination:Vector2,target_id:String)->Dictionary:
 			distance+=previous.distance_to(point);previous=point
 		if distance<0.05:return _result(false,"Вы уже рядом с целью. Перемещение не выполняет взаимодействие: выберите отдельное действие.")
 	actor.busy={"type":"move_to","path":route,"target":target_id,"remaining":route.size(),"mode":"crawl" if actor.body.left_leg=="broken" and actor.body.right_leg=="broken" else ("limp" if actor.body.left_leg!="healthy" or actor.body.right_leg!="healthy" else "walk")}
+	var previous:Vector2=Spatial.point(actor);var distance:float=0.0
+	for waypoint in route:
+		var next:=Vector2(float(waypoint[0]),float(waypoint[1]));distance+=previous.distance_to(next);previous=next
+	actor.busy["total_distance"]=distance
+	if printed:actor.busy["printed"]=true
+	if not target_id.is_empty():actor.busy["face_at_end"]=[destination.x,destination.y]
 	return _result(true,"Начат маршрут по доступному пространству.")
 
 func _advance_actor(id:String,minutes:float)->void:
@@ -255,14 +405,14 @@ func _advance_actor(id:String,minutes:float)->void:
 			var amount:=minf(budget,delta.length())
 			var next:=origin+delta.normalized()*amount
 			if not Spatial.clear_line(origin,next,state.geometry,Spatial.RADIUS):
-				actor.busy={};actor.last_result={"type":"move_to","ok":false,"message":"Путь перекрыт: требуется новое решение."};_event(id,"plan_interrupted",false,"Маршрут прерван препятствием.",{});return
+				actor.busy={};actor.last_result={"type":"move_to","ok":false,"message":"Путь перекрыт: требуется новое решение."};_event(id,"plan_interrupted",false,"Маршрут прерван препятствием.",{"cause":busy.get("start_event_seq",null)});return
 			if not Spatial.clear_bodies(origin,next,state.agents,id) or not Spatial.walkable(next,state.geometry,state.agents,id):
 				var endpoint:Array=busy.path[-1]
-				var alternate:Array=Spatial.path(actor,Vector2(float(endpoint[0]),float(endpoint[1])),state.geometry,state.agents)
+				var alternate:Array=_planned_route(actor,Vector2(float(endpoint[0]),float(endpoint[1])),"",bool(busy.get("printed",false)))
 				busy["blocked_minutes"]=float(busy.get("blocked_minutes",0.0))+minutes
 				if not alternate.is_empty():busy.path=alternate
 				if float(busy.blocked_minutes)>=3.0:
-					actor.busy={};actor.last_result={"type":"move_to","ok":false,"message":"Проход занят людьми: нужен другой маршрут."};_event(id,"plan_interrupted",false,"Маршрут остановлен занятой группой прохода.",{})
+					actor.busy={};actor.last_result={"type":"move_to","ok":false,"message":"Проход занят людьми: нужен другой маршрут."};_event(id,"plan_interrupted",false,"Маршрут остановлен занятой группой прохода.",{"cause":busy.get("start_event_seq",null)})
 				return
 			if delta.length()>0.00001:actor.heading=wrapf(rad_to_deg(atan2(-delta.x,-delta.y)),-180.0,180.0)
 			actor.position=[next.x,next.y]
@@ -271,7 +421,11 @@ func _advance_actor(id:String,minutes:float)->void:
 			budget-=amount
 			if next.distance_to(destination)<0.01:busy.path.pop_front()
 			if amount<0.00001:break
-		if busy.path.is_empty():actor.busy={};actor.last_result={"type":"move_to","ok":true,"message":"Маршрут завершён."};_event(id,"plan_completed",true,"Достигнута цель маршрута.",{})
+		if busy.path.is_empty():
+			if busy.has("face_at_end"):
+				var facing:=Vector2(busy.face_at_end[0],busy.face_at_end[1])-Spatial.point(actor)
+				if facing.length()>0.1:actor.heading=rad_to_deg(atan2(-facing.x,-facing.y))
+			actor.busy={};actor.last_result={"type":"move_to","ok":true,"message":"Маршрут завершён."};_event(id,"plan_completed",true,"Достигнута цель маршрута.",{"cause":busy.get("start_event_seq",null)})
 	elif kind in ["sleep","rest","wait","consume","attack","defend","treat","unconscious"]:
 		busy.remaining=maxf(0.0,float(busy.get("remaining",1.0))-minutes)
 		if kind in ["sleep","rest"]:
@@ -283,7 +437,7 @@ func _advance_actor(id:String,minutes:float)->void:
 				var woke:Dictionary=_wake(id)
 				if not woke.ok:busy.remaining=1.0;return
 			else:actor.busy={}
-			_event(id,"plan_completed",true,"Действие завершено: "+kind,{})
+			_event(id,"plan_completed",true,"Действие завершено: "+kind,{"cause":busy.get("start_event_seq",null)})
 
 func _door_action(id:String,kind:String,resolved:Dictionary)->Dictionary:
 	var target:Dictionary=_entity(resolved)
@@ -353,7 +507,7 @@ func _treat(id:String,action:Dictionary,resolved:Dictionary)->Dictionary:
 	_consume_item(id,item)
 	actor.busy={"type":"treat","remaining":3.0}
 	if recipient.id!=id:_relation(str(recipient.id),id,12.0,"Оказал медицинскую помощь.")
-	return _result(true,"Оказана помощь; использован реальный расходник.")
+	return _result(true,"Оказана помощь; использован реальный расходник.",{"recipient":recipient.id,"kind":item.kind})
 
 func _wake(id:String)->Dictionary:
 	var actor:Dictionary=state.agents[id]
@@ -388,7 +542,7 @@ func observe(id:String)->Dictionary:
 		for other in state.agents.values():
 			if other.id!=id and str(other.carried_by).is_empty():candidates.append({"category":"agent","id":other.id,"kind":"agent","label":actor.known_people.get(other.id,"Человек в одежде "+str(other.color)),"entity":other})
 		for door in state.geometry.doors:candidates.append({"category":"door","id":door.id,"kind":"door","label":"Открытая дверь" if door.open else ("Запертая дверь" if door.locked else "Закрытая дверь"),"entity":door})
-		for prop in state.geometry.props:candidates.append({"category":"prop","id":prop.id,"kind":prop.kind,"label":{"terminal":"Терминал пайков","bed":"Кровать","shop":"Магазин","console":"Сетевая консоль","table":"Стол","shelf":"Шкаф","chair":"Стул"}.get(str(prop.kind),str(prop.kind)),"entity":prop})
+		for prop in state.geometry.props:candidates.append({"category":"prop","id":prop.id,"kind":prop.kind,"label":prop.get("label",{"terminal":"Терминал пайков","bed":"Кровать","shop":"Магазин","console":"Сетевая консоль","table":"Стол","shelf":"Шкаф","chair":"Стул"}.get(str(prop.kind),str(prop.kind))),"entity":prop})
 		candidates.sort_custom(func(a,b):return Spatial.point(actor).distance_to(Spatial.point(a.entity))<Spatial.point(actor).distance_to(Spatial.point(b.entity)))
 		for candidate in candidates:
 			var location:=Spatial.point(candidate.entity)
@@ -537,6 +691,7 @@ func _witness_social(actor_id:String,kind:String,victim_id:String,trust_change:f
 
 func _personal(id:String,entry:Dictionary)->void:
 	entry=entry.duplicate(true);entry["minute"]=state.minute
+	Episodes.record_source(state,id,entry)
 	state.agents[id].personal_results.append(entry)
 	personal_experience.emit(id,{"tick":state.tick,"minute":state.minute,"heard":[],"personal_results":[entry.duplicate(true)]})
 	if state.agents[id].personal_results.size()>20:state.agents[id].personal_results.pop_front()
@@ -545,10 +700,58 @@ func _result(ok:bool,reason:String,details:Dictionary={})->Dictionary:
 	return {"ok":ok,"reason":reason,"details":details}
 
 func _event(actor:String,type_value:String,ok:bool,message:String,details:Dictionary)->void:
-	var event:Dictionary={"seq":int(state.event_cursor),"tick":int(state.tick),"minute":float(state.minute),"type":type_value,"actor":actor,"ok":ok,"message":message,"details":details.duplicate(true)}
+	var participants:Array=[]
+	if state.agents.has(actor):participants.append(actor)
+	for key in ["recipient","target","victim"]:
+		if state.agents.has(str(details.get(key,""))) and not participants.has(str(details[key])):participants.append(str(details[key]))
+	var place:Dictionary=_observer_place(state.agents[actor].position) if state.agents.has(actor) else {"id":"world","label":state.get("map_name","")}
+	var item:Dictionary=state.items.get(str(details.get("item","")),{})
+	var cause:Variant=details.get("cause",item.get("event_seq",null))
+	var category:String="story" if type_value.begins_with("story") else ("intervention" if type_value=="intervention" or type_value.begins_with("god") else ("movement" if type_value in ["move","move_to","plan_completed","plan_interrupted"] else "action"))
+	var event:Dictionary={"seq":int(state.event_cursor),"tick":int(state.tick),"minute":float(state.minute),"type":type_value,"actor":actor,"ok":ok,"message":message,"details":details.duplicate(true),"participants":participants,"place":place,"cause":cause,"category":category,"importance":3 if category=="story" else (2 if type_value in ["give","help","treat","attack","death","speak","send_message"] or not ok else 1),"visibility":"observer","phase":int(state.get("scenario_state",{}).get("phase",0))}
 	state.event_cursor=int(state.event_cursor)+1
+	if state.agents.has(actor):
+		var resident:Dictionary=state.agents[actor]
+		event["position"]=resident.position.duplicate()
+		if ok and not resident.busy.is_empty() and not resident.busy.has("start_event_seq"):resident.busy["start_event_seq"]=event.seq
+	if ok and not item.is_empty():item["event_seq"]=event.seq
 	state.events.append(event);_new_events.append(event)
+	Episodes.record_event(state,event)
 	if state.events.size()>500:state.events.pop_front()
+
+func _observer_place(position:Array)->Dictionary:
+	for room in state.geometry.get("rooms",[]):
+		if absf(float(position[0])-float(room.center[0]))<=float(room.size[0])*0.5 and absf(float(position[1])-float(room.center[1]))<=float(room.size[1])*0.5:return {"id":str(room.get("id",room.get("name",""))),"label":str(room.get("label",room.get("name",""))),"district":str(room.get("district",""))}
+	return {"id":"passage","label":"Двор и переходы","district":""}
+
+func observer_status(actor_id:String)->Dictionary:
+	if not state.agents.has(actor_id):return {}
+	var actor:Dictionary=state.agents[actor_id]
+	var busy:Dictionary=actor.busy
+	var activity:String=str(busy.get("type","idle"))
+	if not actor.alive:activity="dead"
+	elif actor.unconscious:activity="unconscious"
+	elif actor.sleeping:activity="sleep"
+	elif not str(actor.carried_by).is_empty():activity="carried"
+	var target:String=str(busy.get("target",""))
+	var target_label:String=target
+	if state.agents.has(target):target_label=str(state.agents[target].name)
+	else:
+		for prop in state.geometry.props:
+			if prop.id==target:target_label=str(prop.get("label",prop.kind));break
+	var progress:float=-1.0
+	if activity=="move_to" and float(busy.get("total_distance",0))>0.0:
+		var remaining:float=0.0;var previous:Vector2=Spatial.point(actor)
+		for waypoint in busy.get("path",[]):
+			var next:=Vector2(float(waypoint[0]),float(waypoint[1]));remaining+=previous.distance_to(next);previous=next
+		progress=clampf(1.0-remaining/float(busy.total_distance),0.0,1.0)
+	var blocked:String=""
+	if float(busy.get("blocked_minutes",0))>0.0:blocked="Проход занят; ищет обход."
+	elif not actor.last_result.get("ok",true):blocked=str(actor.last_result.get("message",""))
+	return {"activity":activity,"target":target_label,"progress":progress,"blocked_reason":blocked,"place":_observer_place(actor.position),"last_result":actor.last_result.duplicate(true)}
+
+func _update_activity_statuses()->void:
+	for actor_id in state.agents:state.agents[actor_id]["activity_status"]=observer_status(actor_id)
 
 func _objective(key:String)->void:
 	for objective in state.objectives:
@@ -576,6 +779,16 @@ func intervene(command:String,args:Dictionary)->Dictionary:
 	var id:String=str(args.get("id",args.get("actor","")))
 	var result:Dictionary=_result(false,"Неизвестное вмешательство.")
 	match command:
+		"episode_intervention","scenario_intervention":result=Episodes.intervene(self,args)
+		"continue_sandbox":
+			if not state.get("scenario_state",{}).get("completed",false):return _result(false,"Смена ещё продолжается.")
+			state["completed_episode"]=state.scenario_state.duplicate(true)
+			state["display_start_minute"]=state.scenario_state.display_start_minute
+			state.erase("scenario_state")
+			state.scenario="sandbox"
+			state.objectives=[]
+			state.scenario_description="Свободная жизнь после завершения смены."
+			result=_result(true,"Смена завершена. Наблюдение за группой продолжается.")
 		"spawn_item":
 			var kind:String=str(args.get("kind","ration"))
 			if kind not in ["ration","water","medkit","splint","knife","phone","camera","mug","key","diary"]:return _result(false,"Неизвестный тип предмета.")
@@ -648,8 +861,9 @@ func intervene(command:String,args:Dictionary)->Dictionary:
 				"roles":actor.roles=args.get("roles",[]).duplicate();result=_result(true,"Изменены полномочия.")
 				"tokens":actor.tokens=maxi(0,int(args.get("tokens",0)));result=_result(true,"Изменён баланс жетонов.")
 				"appearance":
-					for key in ["face","hair","outfit"]:
-						if args.has(key):actor.appearance[key]=clampi(int(args[key]),0,7)
+					var bounds:Dictionary={"face":5,"hair":5,"outfit":3,"shoes":1}
+					for key in bounds:
+						if args.has(key):actor.appearance[key]=clampi(int(args[key]),0,int(bounds[key]))
 					for key in ["skin","hair_color","color"]:
 						if args.has(key):
 							if key=="color":actor.color=str(args[key])
@@ -705,6 +919,8 @@ func import_state(data:Dictionary)->bool:
 	if not state.network.has("groups"):state.network["groups"]={}
 	_next_item=maxi(int(data.get("next_item",1000)),1000)
 	_refs.clear();_intentions.clear();_new_events.clear()
+	_observation_captures.clear()
+	_update_activity_statuses()
 	return true
 
 func _valid_world(value:Variant)->bool:
@@ -729,6 +945,13 @@ func _valid_world(value:Variant)->bool:
 				if not _finite(number):return false
 			if not _text(box.get("id")) or float(box.size[0])<=0.0 or float(box.size[1])<=0.0 or not _finite(box.get("height")) or float(box.height)<=0.0:return false
 			if key=="doors" and (not box.get("open") is bool or not box.get("locked") is bool):return false
+	for key in ["rooms","districts"]:
+		if not geometry.get(key,[]) is Array:return false
+		for place in geometry.get(key,[]):
+			if not place is Dictionary or not _position_array(place.get("center")) or not _position_array(place.get("size")):return false
+			if float(place.size[0])<=0.0 or float(place.size[1])<=0.0:return false
+	if value.has("scenario_state") and (not _valid_episode(value.scenario_state,value.agents) or value.get("scenario")!=value.scenario_state.id or not geometry.get("rooms") is Array):return false
+	if value.has("completed_episode") and (not _valid_episode(value.completed_episode,value.agents) or not value.completed_episode.completed):return false
 	var held:Dictionary={}
 	for id in value.agents:
 		var actor:Variant=value.agents[id]
@@ -784,6 +1007,35 @@ func _valid_world(value:Variant)->bool:
 		if held.has(item_id) and held[item_id]!=item.holder:return false
 	return _valid_services(value)
 
+func _valid_episode(story:Variant,agents:Dictionary)->bool:
+	if not story is Dictionary or story.get("id") not in Episodes.IDS or not story.get("completed") is bool:return false
+	for key in ["title","description","phase_title","current_problem"]:
+		if not _text(story.get(key)):return false
+	if not _whole(story.get("phase")) or int(story.phase)<1 or int(story.phase)>3:return false
+	for key in ["deadline","display_start_minute"]:
+		if not _finite(story.get(key)) or float(story[key])<0.0:return false
+	for key in ["triggered","injured","initial_poor","debrief"]:
+		if not story.get(key) is Array:return false
+		for entry in story[key]:
+			if not _text(entry) or (key in ["injured","initial_poor"] and not agents.has(entry)):return false
+	if not story.get("interventions") is Array or not story.get("outcome") is Dictionary:return false
+	for card in story.interventions:
+		if not card is Dictionary or card.get("id") not in ["announcement","reserve","policy"] or not card.get("used") is bool or not _text(card.get("title")):return false
+	if story.completed and (story.outcome.get("kind") not in ["success","failure","partial"] or not _text(story.outcome.get("title"))):return false
+	if not story.get("metrics") is Dictionary or not _whole(story.metrics.get("interventions")):return false
+	for key in ["food_consumed","food_received","food_help","verified_sources","funded"]:
+		if not story.metrics.get(key,{} if key=="funded" else null) is Dictionary:return false
+		for id in story.metrics.get(key,{}):
+			if not agents.has(id):return false
+			var amount:Variant=story.metrics[key][id]
+			if key=="verified_sources" or (key=="funded" and amount is bool):
+				if not amount is bool:return false
+			elif not _whole(amount) or int(amount)<0:return false
+	if not story.get("moments",{}) is Dictionary:return false
+	for moment in story.get("moments",{}).values():
+		if not moment is Dictionary or not _finite(moment.get("minute")) or not _text(moment.get("ru")) or not _text(moment.get("en")):return false
+	return true
+
 func _valid_actor_details(actor:Dictionary,agents:Dictionary)->bool:
 	if not _text(actor.profile.get("foundation"),4000) or not _text(actor.profile.get("goal"),2000) or not actor.profile.get("traits") is Array:return false
 	for secondary_trait in actor.profile.traits:
@@ -830,6 +1082,10 @@ func _valid_actor_details(actor:Dictionary,agents:Dictionary)->bool:
 		if not actor.healing is Dictionary:return false
 		for deadline in actor.healing.values():
 			if not _finite(deadline):return false
+	if actor.has("queue_tickets"):
+		if not actor.queue_tickets is Dictionary:return false
+		for kind in actor.queue_tickets:
+			if kind not in ["camera","phone"] or not _text(actor.queue_tickets[kind],100):return false
 	for refs_key in ["offer_refs","service_contacts"]:
 		if actor.has(refs_key) and not actor[refs_key] is Dictionary:return false
 	if actor.has("service_refs"):
@@ -854,6 +1110,7 @@ func _valid_services(value:Dictionary)->bool:
 			seen[actor_id]=true
 	for loan in terminal.loans.values():
 		if not loan is Dictionary or not value.agents.has(loan.get("actor")) or not _finite(loan.get("deadline")) or not loan.get("overdue") is bool or loan.get("kind") not in ["camera","phone"]:return false
+		if loan.has("ticket") and not _text(loan.ticket,100):return false
 	var economy:Dictionary=value.economy
 	for key in ["shop_stock","prices","offers"]:
 		if not economy.get(key) is Dictionary:return false

@@ -83,6 +83,15 @@ func _test_catalog() -> void:
 		'{"type":"move","forward":true,"right":0}','{"type":"turn","degrees":181}',
 		'{"type":"create_vote","title":"x","options":["one"]}',"x".repeat(16001)]:
 		check(not actor.parse_response(invalid).ok,"invalid action rejected")
+	var paired:Dictionary=actor.parse_response(JSON.stringify({"intent":"Use my issued phone","steps":[{"type":"join_queue","kind":"phone"},{"type":"use_device","slot":"received","app":"messages"}]}))
+	check(paired.ok and paired.steps[1].slot=="received","queue plans preserve the exact equipment receipt")
+	for steps in [
+		[{"type":"consume","slot":"received"}],
+		[{"type":"borrow_device","kind":"phone"}],
+		[{"type":"wait","minutes":40},{"type":"wait","minutes":40}],
+		[{"type":"look"},{"type":"look"},{"type":"look"},{"type":"look"},{"type":"look"}]
+	]:
+		check(not actor.parse_response(JSON.stringify({"steps":steps})).ok,"invalid or unbound multi-action plan rejected")
 	actor.free()
 
 func _test_isolation() -> void:

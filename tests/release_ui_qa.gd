@@ -27,7 +27,7 @@ func frames(count:int=3)->void:
 
 func settle()->void:
 	var deadline:=Time.get_ticks_msec()+12000
-	while is_instance_valid(game) and (game.collecting or game.advancing) and Time.get_ticks_msec()<deadline:
+	while is_instance_valid(game) and (game.collecting or game.advancing or game._single_step) and Time.get_ticks_msec()<deadline:
 		await process_frame
 	check(not game.collecting and not game.advancing,"pending offline operation terminates")
 	await frames(2)
@@ -35,9 +35,7 @@ func settle()->void:
 func find_button(fragment:String)->Button:
 	for node in game.ui._root.find_children("*","Button",true,false):
 		if node is Button and fragment in node.text:
-			if node.is_visible_in_tree():return node
-			# Embedded PopupPanel is a separate Window: visibility belongs to it.
-			if node.get_window() is PopupPanel and node.get_window().visible:return node
+			if node.is_visible_in_tree() and node.get_window().visible:return node
 	return null
 
 func reveal(control:Control)->void:
@@ -108,31 +106,38 @@ func single_hair(model:Node,index:int)->bool:
 			visible_count+=1;matching=name.begins_with("hair_"+str(index))
 	return visible_count==1 and matching
 
-func frozen_dispatch_regression()->void:
+func independent_dispatch_regression()->void:
 	# The fixture executes the production request queue; no HTTP/key is enabled.
 	game._set_running(false)
 	var id:String=game.selected
 	game.runtimes[id].configure_provider({"enabled":false,"fixture_response":Callable(self,"fixture_look"),"ledger":game.ledger,"media_directory":test_root.path_join("media")})
 	game.world.sync_state(game.simulation.snapshot(),true);game.world.prepare_capture(id);await frames(2)
 	var png:PackedByteArray=game.world.capture_agent(id).save_png_to_buffer()
-	var observation:Dictionary=game.simulation.observe(id)
-	for i in 4:check(game.ledger.reserve("qa_memory_block_"+str(i),.001,"memory").ok,"temporary memory fixture occupies one shared concurrency slot")
-	game._round={"generation":game.generation,"run_id":int(game.simulation.state.run_id),"tick":int(game.simulation.state.tick),"expected":[id],"remaining":[id],"actions":{},"samples":{id:{"observation":observation,"png":png}},"diagnostics":{}}
-	game.collecting=true;game.running=true
-	var frozen:Dictionary=game.simulation.snapshot()
-	game._process(25.0);await frames(8)
-	check(game.collecting and game.simulation.snapshot()==frozen,"logical world freezes throughout pending capacity-blocked model round")
-	# Keep Step semantics once the queued one-action round is allowed to finish.
+	var original_mode:String=game.mode
+	var original_quote:Dictionary=game._quote.duplicate(true)
+	game.mode="real_vlm";game._quote={"expires_at":int(Time.get_unix_time_from_system())+900}
+	for other in game.simulation.state.agents:
+		game.simulation.state.agents[other].busy={} if other==id else {"type":"wait","remaining":30.0}
+	for i in 4:check(game.ledger.reserve("qa_memory_block_"+str(i),.001,"memory").ok,"shared memory reservation occupies capacity")
+	var previous:float=game.simulation.state.minute
+	game.running=true;game._process(0.2);await frames(3)
+	check(float(game.simulation.state.minute)>previous,"accepted activities continue during network capacity wait")
+	check(int(game.runtimes[id].debug().fixture_requests)==0,"full ledger prevents a fifth request")
 	game.running=false
 	for i in 4:game.ledger.settle("qa_memory_block_"+str(i),0.0)
-	await settle()
-	check(game._round.is_empty() and int(game.runtimes[id].debug().fixture_requests)==1,"queued action resumes when memory completions release all four slots")
-	check(float(game.simulation.state.minute)>float(frozen.minute),"resumed production queue commits fixture intention once")
-	check(int(game.runtimes[id].debug().live_requests_started)==0,"request-queue regression performs zero actual network model calls")
+	game.single_step()
+	var deadline:=Time.get_ticks_msec()+15000
+	while game._single_step and Time.get_ticks_msec()<deadline:await process_frame
+	check(int(game.runtimes[id].debug().fixture_requests)==1,"one manual step dispatches exactly one fixture for the available person")
+	check(int(game.runtimes[id].debug().live_requests_started)==0,"request queue fixture performs zero network model calls")
+	game.mode=original_mode;game._quote=original_quote
 	game.runtimes[id].configure_provider(game._provider_config())
 
 func queued_preflight_regression()->void:
 	game._set_running(false)
+	game._invalidate()
+	game._next_decision.clear()
+	for actor in game.simulation.state.agents.values():actor.busy={}
 	var original_catalog:Node=game._catalog
 	var original_mode:String=game.mode
 	var original_quote:Dictionary=game._quote.duplicate(true)
@@ -150,6 +155,9 @@ func queued_preflight_regression()->void:
 	await frames(3)
 	check(fake.calls.size()==1 and int(fake.calls[0][3])==420,"released queue requests one free quote with420-second minimum validity")
 	check(int(game.ledger.status().request_count)==request_count and game.simulation.snapshot()==frozen,"free quote consumes no paid reservation and changes no world state")
+	game._on_quote_ready(game._catalog_tag,{"ok":false,"error":"test offline"})
+	await frames(3)
+	check(not game._single_step and fake.calls.size()==1,"failed preflight cancels a manual step without retrying")
 	# Cancellation of a queued refresh cannot reappear after later completions.
 	game._provider_pending=false
 	for i in 4:game.ledger.reserve("qa_cancel_quote_"+str(i),.001,"memory")
@@ -186,7 +194,9 @@ func run()->void:
 	game.ui.show_main_menu(true);await frames(2)
 	await click(find_button("Вернуться в мир"))
 	check(not game.ui._menu_visible,"actual menu click returns to world")
-	await click(game.ui._run)
+	game._refresh(false);await frames(3)
+	if game.ui._chapter_popup.visible:await click(game.ui._chapter_continue)
+	else:await click(game.ui._run)
 	check(game.running,"actual Continue button schedules simulation")
 	await click(game.ui._run)
 	check(not game.running,"actual Pause button stops simulation")
@@ -195,14 +205,13 @@ func run()->void:
 	check(float(game.simulation.state.minute)==paused,"paused time remains frozen")
 	await click(find_button("Шаг"));await settle()
 	check(float(game.simulation.state.minute)>paused,"actual Step button advances authoritative time")
-	await click(find_button("Сменить вид"))
-	check(game.world.first_person and game.ui._central.texture==game.world.agent_texture(game.selected),"visible Switch view control displays selected person's actual camera")
-	await click(find_button("Сменить вид"))
+	await click(find_button("Вид"))
+	check(game.world.first_person and game.ui._central.texture==game.world.human_viewport.get_texture() and game.ui._central.texture.get_width()>640,"visible Switch view control displays selected person's actual camera")
+	await click(find_button("Вид"))
 	check(not game.world.first_person and game.ui._central.texture==game.world.observer_texture(),"visible Switch view control returns to world observer camera")
-	await click(find_button("Следить"))
+	await click(find_button("Фокус"))
 	check(game.world.follow_selected,"visible Follow control tracks selected person")
-	await click(game.ui._person_card)
-	check(game.ui._drawer.visible,"actual selected-person card opens inspector")
+	check(game.ui._drawer.visible,"selected person inspector is visible alongside the world")
 	await click(find_button("Образ"))
 	check(game.ui._appearance_popup.visible,"actual Appearance button opens editor")
 	check(game.ui._character_preview.texture!=null,"first editor open immediately shows genuine character preview")
@@ -233,11 +242,13 @@ func run()->void:
 	game.god_intervention("set_health",{"id":game.selected,"health":17.0})
 	await menu_edge(find_button("Сохранения") as MenuButton,true);await settle()
 	check(game.simulation.state.agents[game.selected].health==93.0,"actual Saves menu loads selected slot into authoritative world")
-	# Exercise an app through its actual selectors and engine-gated Open action.
+	# The restored chapter describes the saved situation before observation resumes.
+	if game.ui._chapter_popup.visible:
+		await click(game.ui._chapter_continue);await click(game.ui._run);await settle()
+	# Exercise an app through its engine-gated launcher.
 	await click(find_button("Телефон"))
 	check(game.ui._phone_popup.visible,"actual Phone button opens personal device")
-	await choose(game.ui._app,2)
-	await click(find_button("Открыть"));await settle()
+	await click(find_button("Форум"));await settle()
 	check(game.simulation.state.agents[game.selected].device_app=="forum","actual app Open obtains engine-authorized forum session")
 	game.ui._device_title.text="QA actual forum form";game.ui._device_text.text="QA forum body from genuine controls"
 	await click(find_button("Создать тему"));await settle()
@@ -306,7 +317,7 @@ func run()->void:
 	var before_load:Dictionary=game.simulation.snapshot()
 	game.load_slot(2)
 	check(game.simulation.snapshot()==before_load,"invalid scheduler continuation cannot partially load a session")
-	await frozen_dispatch_regression()
+	await independent_dispatch_regression()
 	await queued_preflight_regression()
 	# A captured image may still be encoding after reset. Its completion belongs
 	# to the previous world even when the replacement reuses the same actor IDs.
@@ -319,7 +330,8 @@ func run()->void:
 	check(int(game.simulation.state.run_id)!=capture_run and game.simulation.snapshot()==replacement_snapshot and game.simulation.state.artifacts.is_empty(),"PNG completion from old run cannot attach photos or mutate replacement world")
 	# Actual dialog starts a new 20-person map and invalidates old run replies.
 	var previous_run:int=int(game.simulation.state.run_id)
-	await click(find_button("Новая история"))
+	await click(find_button("Меню"))
+	await click(find_button("Открыть историю"))
 	check(game.ui._new_popup.visible,"actual New story button opens setup dialog")
 	await choose(game.ui._map_choice,2);game.ui._count.value=20;game.ui._seed.value=991
 	await click(find_button("Начать"));await settle()
@@ -327,10 +339,15 @@ func run()->void:
 	var reset_snapshot:Dictionary=game.simulation.snapshot()
 	game._on_decision(game.selected,previous_run,0,{"type":"set_goal","text":"STALE OLD WORLD"},{})
 	check(game.simulation.snapshot()==reset_snapshot,"old-generation decision cannot mutate UI-created replacement world")
+	if game.ui._chapter_popup.visible:
+		await click(game.ui._chapter_continue);await click(game.ui._run);await settle()
 	await click(find_button("Повтор"));await frames(3)
 	check(game._reviewing and not game.running,"actual Replay button enters offline journal playback")
+	check(game.ui._debug.is_empty() and game.ui._info.decision_states.is_empty() and game.ui._info.observations.is_empty(),"replay does not expose future observations, memories or decisions")
 	game._set_running(false)
-	await click(find_button("Настройки"))
+	if game.ui._chapter_popup.visible:
+		await click(game.ui._chapter_continue);await click(game.ui._run);await settle()
+	await click(find_button("Опции"))
 	check(game.ui._settings_popup.visible,"actual Settings button opens preferences")
 	var settings_tabs:TabContainer=game.ui._settings_popup.find_children("*","TabContainer",true,false)[0]
 	var settings_bar:TabBar=settings_tabs.get_tab_bar()

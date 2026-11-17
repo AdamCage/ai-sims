@@ -97,10 +97,11 @@ func setup(state: Dictionary) -> void:
 	_meshes.clear()
 	_appearances.clear()
 	_held_markers.clear()
+	_targets.clear()
 	_capture_actor = ""
 	_manifest = _load_manifest()
 	_user_camera=false
-	_state = state.duplicate(true)
+	_state = {}
 	_content = Node3D.new()
 	_content.name = "LivingWorld"
 	add_child(_content)
@@ -128,7 +129,8 @@ func setup(state: Dictionary) -> void:
 		_focus=agent_nodes[selected_agent].position+Vector3.UP*0.7;_zoom=8.0;_user_camera=true;follow_selected=true;_update_observer()
 
 func sync_state(state: Dictionary, immediate: bool = false) -> void:
-	_state = state.duplicate(true)
+	# Keep a stable render frame without copying the journal and private histories.
+	_state = {"agents":state.get("agents",{}),"items":state.get("items",{}),"geometry":state.get("geometry",{})}.duplicate(true)
 	_sync_action_feedback(state)
 	for id in state.get("agents", {}):
 		var data: Dictionary = state.agents[id]
@@ -174,10 +176,12 @@ func _process(delta: float) -> void:
 		body.rotation.y = lerp_angle(body.rotation.y, float(_targets[id].heading), minf(1.0, delta * 12.0))
 		if _state.get("agents", {}).has(id):
 			_animate(str(id), _state.agents[id], distance > 0.015)
+			var inventory: Array = _state.agents[id].get("inventory", [])
+			if not inventory.is_empty() and item_nodes.has(inventory[0]):
+				var equipped: Node3D = item_nodes[inventory[0]]
+				equipped.global_position = _held_markers[id].global_position
+				equipped.global_rotation = body.global_rotation
 		_sync_camera(str(id), id==_capture_actor and Engine.get_frames_drawn()<=_capture_frame+1)
-	for id in _state.get("items", {}):
-		if item_nodes.has(id):
-			_sync_item(str(id), _state.items[id])
 	if follow_selected and agent_nodes.has(selected_agent):
 		_focus = _focus.lerp(agent_nodes[selected_agent].position+Vector3.UP*.7, minf(1.0, delta * 6.0))
 		_update_observer()

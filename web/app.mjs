@@ -1,6 +1,7 @@
 import {DurableQueue, readArchive, makeArchive, referencedImages, base64ToBytes, bytesToBase64, sha256, base64url} from './alpha-core.mjs';
 
 import {installPlaytest} from './playtest.mjs';
+import {installToolbar} from './shell-locale.mjs';
 
 const $ = id => document.getElementById(id);
 const commands = [], pngJobs = new Map(), pngResults = new Map(), packJobs = new Map();
@@ -14,7 +15,18 @@ const sceneReady = new Promise(resolve => { resolveScene = resolve; });
 let ledgerText = '', slots = {}, storageError = '', authError = '', releaseLock;
 let durableSlots = {};
 const report = text => { $('boot-message').textContent = text; };
-const badge = text => { $('storage-status').textContent = text; };
+const toolbar = installToolbar($);
+const badge = toolbar.badge;
+const updatePlaytest = installPlaytest($('feedback'), () => commands.push({type:'pause', autosave:false}));
+let toolbarLocale = '';
+let toolbarConnected;
+function updateShell(version,map,mode,language) {
+  updatePlaytest(version,map,mode,language);
+  if (language!==toolbarLocale || Boolean(key)!==toolbarConnected) {
+    toolbarLocale=language;toolbarConnected=Boolean(key);
+    toolbar.update(language,toolbarConnected);
+  }
+}
 
 function openDB() {
   return new Promise((resolve, reject) => { const request = indexedDB.open('ai-sims-alpha', 1); request.onupgradeneeded = () => request.result.createObjectStore('local'); request.onerror = () => reject(new Error('Browser storage unavailable')); request.onsuccess = () => { db = request.result; db.onversionchange = () => { db.close(); storageError = 'Storage changed in another window'; }; resolve(db); }; });
@@ -117,7 +129,7 @@ function startMapPack(mapId) {
 function packStatus(mapId) { const job = packJobs.get(mapId); return JSON.stringify(job || {done:false,error:'',path:''}); }
 
 window.AISimsWeb = Object.freeze({
-  playtestContext: installPlaytest($('feedback'), () => commands.push({type:'pause', autosave:false})),
+  playtestContext: updateShell,
   isReady: () => ready, hasLease: () => lease, gameReady: () => resolveScene(),
   frameSample: value => { renderingFps = Number(value); },
   renderingFps: () => renderingFps,
@@ -208,7 +220,7 @@ async function boot() {
   report('Открываем первую историю…');
   await Promise.race([sceneReady, new Promise((_, reject) => setTimeout(() => reject(new Error('Не удалось открыть игровой мир. Попробуйте перезапустить игру.')), 120000))]);
   $('boot').hidden = true; $('toolbar').hidden = false;
-  $('connect').textContent = key ? 'RouterAI подключён' : 'Подключить RouterAI';
+  toolbar.update(toolbarLocale,Boolean(key));
   badge(authError || storageWarning || 'Сохранения на этом устройстве');
   setInterval(() => { const error = storageError || ledgerQueue.error || saveQueue.error; if (error) badge('Ошибка сохранения · сделайте копию'); }, 1000);
 }
@@ -218,7 +230,8 @@ $('backup').onclick = async () => {
   $('backup').disabled = true;
   try {
     await requestSnapshot(); await saveQueue.tail;
-    if (saveQueue.error) throw new Error();
+    // A full IndexedDB must still allow the player to rescue the live snapshot.
+    // The archive below checks that every referenced photograph is readable.
     mediaExport = new Map();
     const snapshot={...slots};
     for(const hash of referencedImages(snapshot))await gameCommand('export_image',{hash});
@@ -236,6 +249,7 @@ async function importSelectedFile(event) {
   if (!file || importing)return;
   importing=true;
   const status=$('storage-status');
+  delete status.dataset.failure;
   try {
     status.dataset.operation='validate';
     badge('Проверяем файл копии…');
@@ -255,7 +269,22 @@ async function importSelectedFile(event) {
     if(saveQueue.error)throw new Error();
     badge(archive.missingImages.length ? 'Выберите слот. В старой копии отсутствуют фотографии.' : 'Копия восстановлена. Выберите слот');
     status.dataset.operation='complete';
-  } catch { badge('Не удалось восстановить копию. Проверьте файл'); }
+  } catch (error) {
+    // Save only known error categories. A parser message can contain player text.
+    const causes = new Map([
+      ['NotReadableError','file_read'], ['NotFoundError','file_missing'], ['SecurityError','file_access'],
+      ['SyntaxError','invalid_json'], ['QuotaExceededError','storage_quota'],
+      ['Invalid save checksum','slot_checksum'], ['Image checksum mismatch','photo_checksum'],
+      ['Invalid archive header','archive_header'], ['Invalid archive','archive_schema'],
+      ['Invalid image index','photo_index'], ['Incomplete archive','incomplete_archive'],
+      ['Invalid save slot','invalid_slot'], ['Invalid save envelope','invalid_envelope'],
+      ['Invalid save data','invalid_world'], ['Backup contains a credential','credential'],
+      ['Unsupported save format','unknown_format'], ['Invalid legacy save size','legacy_size'],
+    ]);
+    status.dataset.failure = /^[a-z][a-z0-9_]{0,40}$/.test(error?.archiveCode || '')
+      ? error.archiveCode : causes.get(error?.message) || causes.get(error?.name) || 'other';
+    badge('Не удалось восстановить копию. Проверьте файл');
+  }
   finally { mediaRestore=null;event.target.value='';importing=false; }
 }
 $('import-file').oninput = importSelectedFile;

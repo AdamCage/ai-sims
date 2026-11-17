@@ -257,6 +257,7 @@ func _on_command(name: String, payload: Dictionary) -> void:
 		"continue_sandbox":
 			if god_intervention("continue_sandbox",{}):
 				_episode_presented=true
+				save_slot(3,true)
 				_set_running(true)
 		"focus_event":
 			var event_actor:=str(payload.get("actor",""))
@@ -574,6 +575,8 @@ func advance_world(minutes: float) -> void:
 	var scenario:Dictionary=simulation.state.get("scenario_state",{})
 	if bool(scenario.get("completed",false)) and not _episode_presented:
 		_episode_presented=true;running=false;ui.set_running(false);_refresh(false)
+		_last_autosave=float(simulation.state.minute)
+		if save_slot(3,true)!=OK:ui.set_status(_text("Не удалось автоматически сохранить итог. Скачайте копию из меню сохранений.","The ending could not be autosaved. Download a backup from Saves."))
 		if ui.has_method("show_debrief"):ui.show_debrief(scenario)
 	if float(simulation.state.minute)-_last_autosave>=60.0:
 		_last_autosave=float(simulation.state.minute);save_slot(3,true)
@@ -654,8 +657,11 @@ func configure_provider(config: Dictionary) -> void:
 
 func _record() -> void:
 	var new_events: Array=[]
-	for event in simulation.state.events:
-		if int(event.seq)>=_last_event_cursor:new_events.append(event)
+	var events:Array=simulation.state.events
+	var first:=events.size()
+	while first>0 and int(events[first-1].seq)>=_last_event_cursor:
+		first-=1
+	if first<events.size():new_events=events.slice(first)
 	_chronicle.append_array(new_events)
 	_last_event_cursor=int(simulation.state.event_cursor)
 	repository.record(simulation.state,new_events)

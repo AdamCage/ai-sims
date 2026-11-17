@@ -12,6 +12,16 @@ func check(ok:bool,caption:String)->void:
 func frames(count:int=4)->void:
 	for frame in count:await process_frame
 	await RenderingServer.frame_post_draw
+func press_enter()->void:
+	for pressed in [true,false]:
+		var key:=InputEventKey.new();key.keycode=KEY_ENTER;key.pressed=pressed;root.push_input(key,true);await process_frame
+	await frames(2)
+func click(control:Control)->void:
+	var point:=control.get_global_rect().get_center()
+	var motion:=InputEventMouseMotion.new();motion.position=point;motion.global_position=point;root.push_input(motion,true);await process_frame
+	for pressed in [true,false]:
+		var mouse:=InputEventMouseButton.new();mouse.button_index=MOUSE_BUTTON_LEFT;mouse.pressed=pressed;mouse.position=point;mouse.global_position=point;root.push_input(mouse,true);await process_frame
+	await frames(2)
 func run()->void:
 	root.size=Vector2i(1366,768)
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://test-output/alpha-ui"))
@@ -22,6 +32,7 @@ func run()->void:
 	ui.command.connect(func(name,payload):commands.append({"name":name,"payload":payload}))
 	var info:Dictionary={"selected":"person_00","mode":"demo","connection":{"enabled":false},"settings":{"speed":1},"agent_statuses":{},"decision_states":{}}
 	ui.refresh(state,{},info);ui.show_main_menu(false);ui.refresh(state,{},info);await frames(12)
+	check(ui._action_text({"type":"follow_route"})=="Следует по маршруту","Russian inspector names route following in plain language")
 	check(ui._chapter_popup.visible,"A new episode opens on its chapter introduction")
 	check(ui._portrait_image.texture!=null,"Selected person has a rendered portrait on first refresh")
 	check(ui._drawer.visible,"Selected activity card visible by default")
@@ -63,6 +74,7 @@ func run()->void:
 	check(ui._drawer.get_global_rect().end.x<=root.size.x,"Inspector fits viewport")
 	var events:Array=[]
 	for i in 94:events.append({"seq":i,"type":"speak","message":"History marker %03d"%i,"actor":"person_00"})
+	events[83].merge({"place":{"id":"dining","label":"Кухня и столовая"},"position":[11.25,4.5],"cause":0})
 	info["chronicle_events"]=events;info["slots"]=[{"slot":3,"exists":true}];info["decision_states"]={"person_00":{"state":"error","reason":"Test timeout"}};info.connection={"mode":"real_vlm","has_key":false,"pause_reason":"Test pause"};info.mode="real_vlm"
 	ui.refresh(state,{},info);ui._journal_panel.show();await frames()
 	check(ui._journal_rows.get_child_count()==40 and ui._older_events.disabled==false,"Full chronicle renders 40 filtered matches per page")
@@ -70,6 +82,14 @@ func run()->void:
 	check(ui._journal.text.contains("History marker 000") and ui._older_events.disabled,"Oldest historical events remain reachable")
 	ui._event_search.text="marker 083";ui._event_search.text_changed.emit(ui._event_search.text);await frames()
 	check(ui._journal_page==0 and ui._journal_rows.get_child_count()==1,"Search scans the entire archive and resets pagination")
+	ui._journal_rows.get_child(0).grab_focus();await press_enter()
+	check(ui._journal_selection.visible and ui._selection_details.text.contains("Kitchen and dining room") and ui._selection_details.text.contains("History marker 000") and ui._show_event_place.has_focus(),"Keyboard selection exposes event place and earlier cause above the results")
+	await click(ui._show_event_place)
+	check(not ui._journal_panel.visible and commands[-1].name=="focus_event" and commands[-1].payload.position==[11.25,4.5],"Clicking Show location reveals the recorded event coordinates")
+	ui._journal_panel.show();await frames();await click(ui._journal_rows.get_child(0))
+	check(ui._journal_selection.visible and ui._selected_event.seq==83,"Click selects the same historical event without hovering")
+	root.get_texture().get_image().save_png("res://test-output/alpha-ui/chronicle_detail_1920_en.png")
+	await press_enter();check(not ui._journal_panel.visible and commands[-1].name=="focus_event" and commands[-1].payload.seq==83,"Enter opens the recorded place and closes the chronicle")
 	check(ui._retry_decision.visible and ui._mode.text.contains("required") and ui._status.text=="Test pause","AI failures and disconnected credentials are visible")
 	ui._retry_decision.pressed.emit();check(commands.any(func(entry):return entry.name=="retry_agent" and entry.payload.id=="person_00"),"Retry targets only the selected person")
 	ui.show_main_menu(true);check(ui._continue_save.visible,"Startup menu offers a saved story when the autosave exists")

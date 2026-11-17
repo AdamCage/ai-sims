@@ -137,6 +137,11 @@ var _journal_page:=0
 var _older_events:Button
 var _newer_events:Button
 var _page_number:Label
+var _journal_selection:HBoxContainer
+var _selection_details:Label
+var _show_event_place:Button
+var _selected_event:Dictionary={}
+var _event_group:ButtonGroup
 var _district_choice: OptionButton
 var _district_signature: String=""
 var _chapter_popup: PopupPanel
@@ -190,6 +195,7 @@ func refresh(state: Dictionary, debug: Dictionary, session_info: Dictionary) -> 
 			if child is PopupPanel and child.visible:child.hide()
 		if is_instance_valid(_world):_world.suspend_character_preview()
 		_screen_signature="";_last_gallery_ref="";_last_journal_signature="";_seen_chapter="";_debrief_key="";_journal_page=0
+		_selected_event={};_journal_selection.hide()
 	var agents: Dictionary=state.get("agents",{})
 	if agents.has(str(session_info.get("selected",""))): selected_agent=str(session_info.selected)
 	if selected_agent.is_empty() or not agents.has(selected_agent): selected_agent=str(agents.keys()[0]) if not agents.is_empty() else ""
@@ -547,6 +553,14 @@ func _build_journal(parent: VBoxContainer) -> void:
 	_event_filter.item_selected.connect(func(_index):_set_journal_page(0))
 	_event_search=LineEdit.new();_event_search.placeholder_text=_t("Найти имя или событие…","Find a name or event…");_event_search.size_flags_horizontal=Control.SIZE_EXPAND_FILL;filter_row.add_child(_event_search)
 	_event_search.text_changed.connect(func(_text):_set_journal_page(0))
+	_journal_selection=HBoxContainer.new();_journal_selection.add_theme_constant_override("separation",12);layout.add_child(_journal_selection)
+	_selection_details=_wrapped_label(_journal_selection,"",14,CREAM);_selection_details.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	_show_event_place=_button(_journal_selection,_t("Показать место","Show location"),func():
+		var event:=_selected_event
+		_journal_panel.hide()
+		_journal_toggle.grab_focus()
+		_focus_event(event))
+	_journal_selection.hide();_event_group=ButtonGroup.new()
 	var scroll:=ScrollContainer.new();scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL;scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED;layout.add_child(scroll)
 	_journal_rows=VBoxContainer.new();_journal_rows.size_flags_horizontal=Control.SIZE_EXPAND_FILL;_journal_rows.add_theme_constant_override("separation",6);scroll.add_child(_journal_rows)
 	_journal=_rich(layout,0);_journal.hide()
@@ -853,6 +867,7 @@ func _refresh_targets(observation: Dictionary) -> void:
 	_populate_choice(_photo_target,viewers,"name",_t("Рядом никого не видно","No person in sight"))
 
 func _set_journal_page(page:int) -> void:
+	_selected_event={};_journal_selection.hide()
 	_journal_page=maxi(0,page);_last_journal_signature="";_refresh_journal(_state.get("events",[]))
 
 func _refresh_journal(events: Array) -> void:
@@ -1374,20 +1389,45 @@ func _event_caption(event:Dictionary,count:int=1)->String:
 		message="New session in %s with %d residents."%[MAP_EN[index],_state.get("agents",{}).size()]
 	return "%02d:%02d  ·  %s  ·  %s%s"%[int(fmod(minute,1440.0)/60.0),int(fmod(minute,60.0)),person,message,("  ×%d"%count) if count>1 else ""]
 
-func _event_button(parent:Node,event:Dictionary,count:int)->Button:
-	var button:=_button(parent,_event_caption(event,count),func():
-		var payload:Dictionary={"seq":int(event.get("seq",0)),"actor":str(event.get("actor",""))}
-		var details:Dictionary=event.get("details",{})
-		if event.has("position"):payload.position=event.position
-		elif details.has("position"):payload.position=details.position
-		if _state.get("agents",{}).has(payload.actor):_pick_person(str(payload.actor))
-		command.emit("focus_event",payload))
-	button.alignment=HORIZONTAL_ALIGNMENT_LEFT;button.clip_text=true;button.tooltip_text=_event_caption(event,count);button.size_flags_horizontal=Control.SIZE_EXPAND_FILL;button.custom_minimum_size.y=36
+func _event_context(event:Dictionary)->String:
 	var location:String=_place_name(event.get("place",{}))
-	if not location.is_empty():button.tooltip_text+="\n"+_t("Место · ","Place · ")+location
+	if location.is_empty():location=_t("Не указано","Unspecified")
 	var cause:Variant=event.get("cause")
+	var reason:String=_t("Не зафиксирована","Unrecorded")
 	if (cause is int or cause is float) and _event_lookup.has(str(int(cause))):
-		button.tooltip_text+="\n"+_t("Причина · ","Cause · ")+_event_caption(_event_lookup[str(int(cause))],1)
+		reason=_event_caption(_event_lookup[str(int(cause))],1)
+	return _t("Где · %s   /   Причина · %s","Where · %s   /   Cause · %s")%[location,reason]
+
+func _event_position(event:Dictionary)->Array:
+	var point:Variant=event.get("position",event.get("details",{}).get("position",[]))
+	if point is Array and point.size()==2:return point
+	var place_id:String=str(event.get("place",{}).get("id",""))
+	for room in _state.get("geometry",{}).get("rooms",[]):
+		if not place_id.is_empty() and str(room.get("id",""))==place_id:return room.get("center",[])
+	return []
+
+func _focus_event(event:Dictionary)->void:
+	var payload:Dictionary={"seq":int(event.get("seq",0)),"actor":str(event.get("actor",""))}
+	var position:=_event_position(event)
+	if not position.is_empty():payload.position=position
+	if _first_person and not position.is_empty():_toggle_view()
+	if _state.get("agents",{}).has(payload.actor):_pick_person(str(payload.actor))
+	command.emit("focus_event",payload)
+
+func _event_button(parent:Node,event:Dictionary,count:int)->Button:
+	var full_chronicle:bool=parent==_journal_rows
+	var button:=_button(parent,_event_caption(event,count),func():
+		if full_chronicle:
+			_selected_event=event
+			_selection_details.text=_event_context(event)
+			_show_event_place.disabled=_event_position(event).is_empty()
+			_journal_selection.show()
+			if not _show_event_place.disabled:_show_event_place.grab_focus()
+		else:_focus_event(event))
+	button.alignment=HORIZONTAL_ALIGNMENT_LEFT;button.clip_text=true;button.tooltip_text=_event_caption(event,count)+"\n"+_event_context(event);button.size_flags_horizontal=Control.SIZE_EXPAND_FILL;button.custom_minimum_size.y=36
+	if full_chronicle:
+		button.toggle_mode=true;button.button_group=_event_group
+		button.button_pressed=not _selected_event.is_empty() and event.seq==_selected_event.seq
 	button.add_theme_stylebox_override("normal",_style(Color("263e4b"),Color("263e4b"),7,8))
 	if not bool(event.get("ok",true)):button.add_theme_color_override("font_color",CORAL)
 	return button

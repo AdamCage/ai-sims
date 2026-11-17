@@ -1,15 +1,29 @@
 export const BACKUP_SCHEMA = 'ai-sims-local-backup-v1';
 // Three individually bounded 32 MiB slot envelopes plus JSON quoting.
 export const MAX_BACKUP_BYTES = 128 * 1024 * 1024;
+function archiveFailure(code) {
+  return Object.assign(new Error('Invalid or unreadable backup'), {archiveCode:code});
+}
+
+function readJSON(text, code) {
+  try { return JSON.parse(text); }
+  catch { throw archiveFailure(code); }
+}
+
 export function parseBackup(text) {
   if (typeof text !== 'string' || new TextEncoder().encode(text).length > MAX_BACKUP_BYTES) throw new Error('Backup is too large');
-  const raw = JSON.parse(text);
-  if (!raw || raw.schema !== BACKUP_SCHEMA || !raw.slots || Array.isArray(raw.slots) || typeof raw.slots !== 'object') throw new Error('Unsupported save format');
+  const raw = readJSON(text,'legacy_json');
+  if (!raw || raw.schema !== BACKUP_SCHEMA) throw new Error('Unsupported save format');
+  return validateSlots(raw.slots);
+}
+
+function validateSlots(rawSlots) {
+  if (!rawSlots || Array.isArray(rawSlots) || typeof rawSlots !== 'object') throw new Error('Unsupported save format');
   const slots = {};
-  for (const [name, content] of Object.entries(raw.slots)) {
+  for (const [name, content] of Object.entries(rawSlots)) {
     if (!/^slot_[123]\.json$/.test(name) || typeof content !== 'string' || content.length>32*1024*1024) throw new Error('Invalid save slot');
-    const wrapper = JSON.parse(content); if (!wrapper || typeof wrapper.payload !== 'string' || !/^[a-f0-9]{64}$/.test(wrapper.sha256)) throw new Error('Invalid save envelope');
-    const envelope = JSON.parse(wrapper.payload); if (envelope.schema !== 2 || !envelope.data || typeof envelope.data !== 'object') throw new Error('Invalid save data');
+    const wrapper = readJSON(content,'slot_wrapper_json'); if (!wrapper || typeof wrapper.payload !== 'string' || !/^[a-f0-9]{64}$/.test(wrapper.sha256)) throw new Error('Invalid save envelope');
+    const envelope = readJSON(wrapper.payload,'slot_payload_json'); if (!envelope || envelope.schema !== 2 || !envelope.data || typeof envelope.data !== 'object') throw new Error('Invalid save data');
     if (/sk-[A-Za-z0-9_-]{12,}/.test(content)) throw new Error('Backup contains a credential');
     slots[name] = content;
   }
@@ -43,19 +57,56 @@ export function makeArchive(slots, images) {
   return new Blob([header,manifest,...images.values()],{type:'application/octet-stream'});
 }
 
-export async function readArchive(file) {
-  const prefix = new Uint8Array(await file.slice(0,8).arrayBuffer());
+async function readBytes(blob, stage, preferReader = false) {
+  const nativeReader = () => new Promise((resolve,reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.onabort = () => reject(new DOMException('Aborted','AbortError'));
+    reader.readAsArrayBuffer(blob);
+  });
+  const methods = typeof FileReader === 'function'
+    ? (preferReader ? [nativeReader, () => blob.arrayBuffer()] : [() => blob.arrayBuffer(), nativeReader])
+    : [() => blob.arrayBuffer()];
+  for (const read of methods) {
+    try {
+      const buffer = await read();
+      if (buffer.byteLength !== blob.size) throw archiveFailure(stage+'_truncated');
+      return new Uint8Array(buffer);
+    } catch (error) {
+      if (read === methods[methods.length-1]) {
+        if (error.archiveCode) throw error;
+        const family = {NotReadableError:'unreadable',NotFoundError:'missing',SecurityError:'access',AbortError:'aborted'};
+        throw archiveFailure(stage+'_'+(family[error.name] || 'read'));
+      }
+    }
+  }
+}
+
+async function readText(blob, stage) {
+  const bytes = await readBytes(blob,stage);
+  try { return new TextDecoder('utf-8',{fatal:true}).decode(bytes); }
+  catch { throw archiveFailure(stage+'_encoding'); }
+}
+
+export async function readArchive(selected) {
+  // Read an ordinary disk-backed selection directly while its file grant is
+  // active. All later slices are immutable memory blobs, including photos
+  // restored after the manifest. Large archives still use bounded ranges.
+  const smallSelection = typeof File !== 'undefined' && selected instanceof File && selected.size <= 8*1024*1024;
+  const file = smallSelection ? new Blob([await readBytes(selected,'selected_file',true)]) : selected;
+  const prefix = await readBytes(file.slice(0,8),'header');
   let slots, images = new Map(), missingImages = [];
   if (prefix.length < 8 || String.fromCharCode(...prefix.slice(0,4)) !== 'AIS2') {
     if (file.size > MAX_BACKUP_BYTES) throw new Error('Invalid legacy save size');
-    slots = parseBackup(await file.text());
+    slots = parseBackup(await readText(file,'legacy'));
     missingImages = referencedImages(slots);
   } else {
     const size = new DataView(prefix.buffer).getUint32(4);
     if (size > MAX_BACKUP_BYTES || size+8 > file.size) throw new Error('Invalid archive header');
-    const manifest = JSON.parse(await file.slice(8,8+size).text());
-    if (manifest.schema !== 'ai-sims-backup-v2' || !Array.isArray(manifest.media)) throw new Error('Invalid archive');
-    slots = parseBackup(makeBackup(manifest.slots));
+    const manifest = readJSON(await readText(file.slice(8,8+size),'manifest'),'manifest_json');
+    if (!manifest || manifest.schema !== 'ai-sims-backup-v2' || !Array.isArray(manifest.media)) throw new Error('Invalid archive');
+    slots = validateSlots(manifest.slots);
     let offset = 8+size;
     const expected = new Set(referencedImages(slots));
     for (const item of manifest.media) {
@@ -66,7 +117,10 @@ export async function readArchive(file) {
   }
   for (const wrapped of Object.values(slots)) {
     const {payload,sha256:hash}=JSON.parse(wrapped);
-    if (await sha256(new TextEncoder().encode(payload))!==hash) throw new Error('Invalid save checksum');
+    let actual;
+    try { actual = await sha256(new TextEncoder().encode(payload)); }
+    catch { throw archiveFailure('slot_digest_unavailable'); }
+    if (actual!==hash) throw new Error('Invalid save checksum');
   }
   return {slots, images, missingImages};
 }

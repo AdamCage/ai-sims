@@ -36,6 +36,7 @@ func begin(state: Dictionary) -> void:
 	_initial = state.duplicate(true)
 	_archive.begin(state)
 	_previous = state.duplicate(true)
+	_previous.erase("events") # Indexed separately and excluded from world patches.
 	checkpoints = []
 	_last_checkpoint_minute = float(state.get("minute",0.0))
 	_write_checkpoint(state)
@@ -59,7 +60,12 @@ func record(state: Dictionary, events: Array = []) -> void:
 	if _journal != null:
 		_journal.store_line(line)
 		if _journal.get_error()!=OK:storage_error="session_journal_write_failed"
-	_previous = state.duplicate(true)
+	# Update the private before-image with the same transition replay consumes.
+	# This avoids cloning the entire map and up to 500 old events every 0.05 game minute.
+	for patch in patches:
+		if not _apply_patch(_previous,patch):
+			_previous=state.duplicate(true);_previous.erase("events")
+			break
 	if float(state.get("minute",0)) - _last_checkpoint_minute >= 5.0:
 		flush()
 		_write_checkpoint(state)
@@ -292,6 +298,7 @@ func resume_from_slot(state:Dictionary, replay:Variant) -> bool:
 	_archive.chunks=replay.chunks.duplicate()
 	for item in replay.get("media",[]):_archive.collect_images(item)
 	_previous=last
+	_previous.erase("events")
 	record(state) # The restored run has a new generation.
 	flush()
 	return true

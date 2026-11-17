@@ -5,9 +5,30 @@ const {readFile,writeFile,mkdir}=require('node:fs/promises');
 const {createHash}=require('node:crypto');
 const assert=require('node:assert/strict');
 const path=require('node:path');
+const {PNG}=require(path.join(path.dirname(require.resolve(process.env.PW_CORE || 'playwright-core')),'lib','utilsBundle.js'));
 const name=process.env.BROWSER || 'chrome';
 const base=process.env.BETA_URL || 'http://127.0.0.1:8732/';
 const dir=process.env.BETA_REPORT || 'test-output/beta-browser';
+
+async function startChapter(page){
+  // A new map may still be compiling shaders. Locate its native mint action
+  // surface after the popup is drawn, then click the real Godot control.
+  const deadline=Date.now()+60000;
+  while(Date.now()<deadline){
+    const shot=PNG.sync.read(await page.screenshot());
+    let run=0;
+    for(let y=640;y<790;y++){
+      const mint=[420,520,915,1010].every(x=>{
+        const i=(y*shot.width+x)*4;
+        return Math.abs(shot.data[i]-159)<10 && Math.abs(shot.data[i+1]-203)<10 && Math.abs(shot.data[i+2]-181)<10;
+      });
+      run=mint?run+1:0;
+      if(run===23){await page.mouse.click(720,y-5);return;}
+    }
+    await page.waitForTimeout(200);
+  }
+  throw new Error('Chapter action did not appear');
+}
 
 async function run(){
   await mkdir(dir,{recursive:true});
@@ -49,8 +70,8 @@ async function run(){
       if (process.env.BETA_COUNT) {
         await page.mouse.dblclick(397,524);await page.keyboard.press('Control+a');await page.keyboard.type(process.env.BETA_COUNT);await page.keyboard.press('Enter');
       }
-      await page.mouse.click(720,611);await page.waitForTimeout(1800);
-      await page.mouse.click(720,699); // Start observing the first chapter.
+      await page.mouse.click(720,611);
+      await startChapter(page);
       if(process.env.BETA_FULL_HD)await page.setViewportSize({width:1920,height:1126});
       await page.waitForTimeout(Number(process.env.BETA_WARMUP_MS || 0));
       const metrics=await page.evaluate(async duration=>{
@@ -125,6 +146,18 @@ async function run(){
     await target.mouse.click(1265,815);
     await target.waitForTimeout(650);
     await target.screenshot({path:path.join(dir,name+'-replay.png')});
+    await target.evaluate(()=>{
+      const put=IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put=function(value,key){
+        if(key==='slots')throw new DOMException('Synthetic full disk','QuotaExceededError');
+        return put.call(this,value,key);
+      };
+    });
+    const rescued=target.waitForEvent('download',{timeout:60000});
+    await target.locator('#backup').click();
+    assert.equal((await rescued).suggestedFilename(),'AI-Sims.aisims');
+    assert.ok(await target.evaluate(()=>JSON.parse(AISimsWeb.getStatus()).storage_error));
+    report.full_storage_rescue_copy=true;
     await clean.close();assert.deepEqual(report.errors,[]);report.passed=true;
   } finally {
     await writeFile(path.join(dir,name+'.json'),JSON.stringify(report,null,2));

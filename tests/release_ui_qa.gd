@@ -357,6 +357,18 @@ func run()->void:
 	await click(find_button("Применить настройки"));await frames(6)
 	check(game.ui.language=="en" and game.settings.language=="en","actual Settings Apply rebuilds interface in requested language")
 	check(game.settings.quality=="low" and game.settings.speed==2.0 and is_equal_approx(float(game.settings.sfx_volume),.35),"actual Settings Apply commits quality, speed and sound preferences")
+	game.new_session({"map_id":"residence","count":3,"scenario":"episode","seed":31})
+	while float(game.simulation.state.minute)<660.0:game.advance_world(60.0)
+	game.advance_world(0.25)
+	game.save_slot(3,true)
+	game._last_autosave=660.25
+	game.advance_world(59.8)
+	var ending:Dictionary=game.repository.load_slot(3).data.world.world
+	check(ending.scenario_state.completed and float(ending.minute)>=720.0,"episode ending autosaves even when the next hourly timer falls past the deadline")
+	game._on_command("continue_sandbox",{})
+	var continuation:Dictionary=game.repository.load_slot(3).data.world.world
+	check(continuation.scenario=="sandbox" and continuation.has("completed_episode"),"sandbox entry is saved with the completed episode intact")
+	game._set_running(false)
 	game._set_running(false)
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://test-output/release-ui-qa"))
 	await frames(3)

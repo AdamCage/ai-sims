@@ -145,6 +145,7 @@ var _chapter_text: RichTextLabel
 var _chapter_continue: Button
 var _intervention_box: VBoxContainer
 var _seen_chapter: String=""
+var _replacing_run:=-1
 var _debrief_key: String=""
 var _last_status: String=""
 var _map_cards: Array=[]
@@ -225,11 +226,11 @@ func set_connection_state(info: Dictionary) -> void:
 	if not is_instance_valid(_mode): return
 	var live: bool=bool(info.get("enabled",false)) or (info.get("mode","")=="real_vlm" and info.get("has_key",false))
 	var cost: float=float(info.get("spent_rub",info.get("budget",{}).get("spent_rub",info.get("spent",0))))
-	_mode.text=("RouterAI · %.2f ₽" % cost) if live else _t("Демонстрация · без сети","Demo · offline")
+	_mode.text=("RouterAI · %.2f RUB" % cost) if live else _t("Демонстрация · без сети","Demo · offline")
 	_mode.add_theme_color_override("font_color",GREEN if live else GOLD)
 	if is_instance_valid(_connection_status):
 		var budget_info: Dictionary=info.get("budget",{})
-		_connection_status.text=(_t("Подключено · израсходовано %.2f ₽ · осталось %.2f ₽","Connected · spent %.2f ₽ · remaining %.2f ₽")%[cost,float(budget_info.get("remaining_rub",0))]) if live else _t("Реальные AI-вызовы выключены.","Real AI requests are disabled.")
+		_connection_status.text=(_t("Подключено · израсходовано %.2f руб. · осталось %.2f руб.","Connected · spent %.2f RUB · remaining %.2f RUB")%[cost,float(budget_info.get("remaining_rub",0))]) if live else _t("Реальные AI-вызовы выключены.","Real AI requests are disabled.")
 
 func show_main_menu(value: bool=true) -> void:
 	_menu_visible=value
@@ -419,7 +420,7 @@ func _build_inspector(parent: HBoxContainer) -> void:
 	_life_text=_rich(life,240)
 	_button(life,_t("Личный телефон","Personal phone"),_show_phone)
 	var actions_box:=VBoxContainer.new(); actions_box.add_theme_constant_override("separation",8)
-	_button(life,_t("Поручить действие ▾","Direct an action ▾"),func():actions_box.visible=not actions_box.visible)
+	_button(life,_t("Поручить действие","Direct an action"),func():actions_box.visible=not actions_box.visible)
 	life.add_child(actions_box); actions_box.hide()
 	var quick:=GridContainer.new(); quick.columns=3; actions_box.add_child(quick)
 	for entry in [["Осмотр","Look",{"type":"look"}],["Отдых","Rest",{"type":"rest","minutes":30.0}],["Сон","Sleep",{"type":"sleep","minutes":120.0}],["Проснуться","Wake",{"type":"wake"}],["Паёк","Ration",{"type":"request_ration"}],["Защита","Defend",{"type":"defend"}]]:
@@ -602,7 +603,7 @@ func _build_new_dialog() -> void:
 	_label(settings_row,_t("Вариант истории","Story seed"),15,TEXT);_seed=_spin(settings_row,1,999999,1,1)
 	_wrapped_label(box,_t("По умолчанию — 8 участников. Можно выбрать от 3 до 20. Режим AI и бюджет настраиваются отдельно.","Eight people by default; choose between 3 and 20. AI mode and budget are configured separately."),14,MUTED)
 	var begin:=_button(box,_t("Начать этот день","Begin this day"),func():
-		_seen_chapter="";_debrief_key="";_new_popup.hide();show_main_menu(false)
+		_replacing_run=int(_state.get("run_id",-1));_seen_chapter="";_debrief_key="";_new_popup.hide();show_main_menu(false)
 		command.emit("new_session",{"map_id":str(_map_choice.get_selected_metadata()),"count":int(_count.value),"scenario":str(_scenario_choice.get_selected_metadata()),"seed":int(_seed.value)}))
 	_accent_button(begin);_update_story_cards()
 
@@ -618,8 +619,8 @@ func _build_settings_dialog() -> void:
 	_label(ai,_t("Личный API-ключ","Personal API key"),13,MUTED)
 	_api_key=LineEdit.new(); _api_key.secret=true; _api_key.placeholder_text=_t("Личный ключ · не передавайте его другим","Personal key · keep it private");_api_key.custom_minimum_size.y=42; ai.add_child(_api_key)
 	_model=LineEdit.new(); _model.text="~deepseek/deepseek-v4-flash-latest";ai.add_child(_model);_model.hide()
-	var advanced:=Button.new();advanced.text=_t("Выбрать другую модель ▾","Choose another model ▾");advanced.flat=true;advanced.alignment=HORIZONTAL_ALIGNMENT_LEFT;advanced.pressed.connect(func():_model.visible=not _model.visible);ai.add_child(advanced)
-	var budget_row:=HBoxContainer.new(); ai.add_child(budget_row); _label(budget_row,_t("Предел расходов, ₽","Spending limit, ₽"),15,TEXT).size_flags_horizontal=Control.SIZE_EXPAND_FILL; _budget=_spin(budget_row,0.1,1000,100,1)
+	var advanced:=Button.new();advanced.text=_t("Выбрать другую модель","Choose another model");advanced.flat=true;advanced.alignment=HORIZONTAL_ALIGNMENT_LEFT;advanced.pressed.connect(func():_model.visible=not _model.visible);ai.add_child(advanced)
+	var budget_row:=HBoxContainer.new(); ai.add_child(budget_row); _label(budget_row,_t("Предел расходов, руб.","Spending limit, RUB"),15,TEXT).size_flags_horizontal=Control.SIZE_EXPAND_FILL; _budget=_spin(budget_row,0.1,1000,100,1)
 	var connect:=_button(ai,_t("Применить подключение","Apply connection"),func():
 		command.emit("provider",{"enabled":_live.button_pressed,"key":_api_key.text.strip_edges(),"model":_model.text.strip_edges(),"budget":float(_budget.value)})
 		_api_key.clear())
@@ -757,7 +758,7 @@ func _refresh_person(agent: Dictionary) -> void:
 	var lines: Array[String]=[condition+_t(" · боль %d"," · pain %d")%roundi(float(agent.get("pain",0))),_t("Жетоны: ","Tokens: ")+str(agent.get("tokens",0)),"",_t("Инвентарь","Inventory")]
 	for index in agent.get("inventory",[]).size():
 		var item: Dictionary=_state.get("items",{}).get(agent.inventory[index],{})
-		lines.append("• "+str(item.get("label",_t("Предмет","Item"))))
+		lines.append("• "+_item_name(item))
 	if agent.get("inventory",[]).is_empty(): lines.append(_t("Пусто","Empty"))
 	for limb in ["left_arm","right_arm","left_leg","right_leg"]:
 		if body.get(limb,"healthy")!="healthy": lines.append(_limb_name(limb)+": "+(_t("сломана","broken") if body.get(limb)=="broken" else _t("повреждена","injured")))
@@ -771,10 +772,10 @@ func _refresh_person(agent: Dictionary) -> void:
 	var previous_device: int=_device_slot_index();_device_slot.clear()
 	for index in agent.get("inventory",[]).size():
 		var item: Dictionary=_state.get("items",{}).get(agent.inventory[index],{})
-		_inventory_slot.add_item(str(item.get("label",_t("Предмет","Item")))); _inventory_slot.set_item_metadata(_inventory_slot.item_count-1,index)
+		_inventory_slot.add_item(_item_name(item)); _inventory_slot.set_item_metadata(_inventory_slot.item_count-1,index)
 		if index==previous_slot: _inventory_slot.select(index)
 		if item.get("kind")=="phone":
-			_device_slot.add_item(str(item.get("label",_t("Телефон","Phone"))));_device_slot.set_item_metadata(_device_slot.item_count-1,index)
+			_device_slot.add_item(_item_name(item));_device_slot.set_item_metadata(_device_slot.item_count-1,index)
 			if index==previous_device:_device_slot.select(_device_slot.item_count-1)
 	if _inventory_slot.item_count==0: _inventory_slot.add_item(_t("Пусто","Empty")); _inventory_slot.set_item_metadata(0,0)
 	if _device_slot.item_count==0:_device_slot.add_item(_t("Нет доступного телефона","No accessible phone"));_device_slot.set_item_metadata(0,0)
@@ -793,7 +794,7 @@ func _refresh_person(agent: Dictionary) -> void:
 		var source_name: String=str(_state.agents.get(offer.get("from",""),{}).get("name",_t("Собеседник","Contact")))
 		var recipient_name: String=str(_state.agents.get(offer.get("to",""),{}).get("name",_t("Собеседник","Contact")))
 		var statuses: Dictionary={"proposed":_t("предложено","proposed"),"accepted":_t("принято","accepted"),"completed":_t("обмен завершён","exchange complete"),"claimed":_t("ожидает подтверждения","awaiting confirmation"),"fulfilled":_t("исполнено","fulfilled"),"expired":_t("срок истёк","expired")}
-		var caption: String=source_name+" → "+recipient_name+": "+str(statuses.get(str(offer.get("status","")),_t("соглашение","agreement")))
+		var caption: String=source_name+" / "+recipient_name+": "+str(statuses.get(str(offer.get("status","")),_t("соглашение","agreement")))
 		relations.append(caption)
 		var item_name: String=str(_state.get("items",{}).get(offer.get("item",""),{}).get("label",""))
 		if not item_name.is_empty(): relations.append("  "+item_name+_t(" за %d жетонов"," for %d tokens")%int(offer.get("request_tokens",0)))
@@ -831,7 +832,7 @@ func _refresh_person(agent: Dictionary) -> void:
 		var message:Dictionary=network.messages[key]
 		var sender:String=str(_state.agents.get(message.get("sender",""),{}).get("name",_t("Отправитель","Sender")))
 		var recipient:String=str(_state.agents.get(message.get("recipient",""),{}).get("name",_t("Получатель","Recipient")))
-		messages.append({"ref":str(key),"name":sender+" → "+recipient+" · "+_message_status(str(message.get("status","")))})
+		messages.append({"ref":str(key),"name":sender+" / "+recipient+" · "+_message_status(str(message.get("status","")))})
 	_populate_choice(_trace_message,messages,"name",_t("Сообщений пока нет","No messages yet"));_refresh_message_trace()
 
 func _refresh_targets(observation: Dictionary) -> void:
@@ -1263,7 +1264,7 @@ func _memory_entry_text(value: Variant) -> String:
 
 func _action_text(action: Dictionary) -> String:
 	var type: String=str(action.get("type",""))
-	var names: Dictionary={"wait":_t("Ждёт","Waits"),"look":_t("Осматривается","Looks around"),"move":_t("Идёт","Walks"),"move_to":_t("Направляется к цели","Moves toward a target"),"consume":_t("Ест","Eats"),"rest":_t("Отдыхает","Rests"),"sleep":_t("Спит","Sleeps"),"take":_t("Берёт предмет","Takes an item"),"give":_t("Передаёт предмет","Gives an item"),"speak":_t("Говорит","Speaks"),"attack":_t("Атакует","Attacks"),"treat":_t("Оказывает помощь","Treats injuries")}
+	var names: Dictionary={"follow_route":_t("Следует по маршруту","Follows a route"),"read_notice":_t("Читает объявление","Reads a notice"),"wait":_t("Ждёт","Waits"),"look":_t("Осматривается","Looks around"),"move":_t("Идёт","Walks"),"move_to":_t("Направляется к цели","Moves toward a target"),"consume":_t("Ест","Eats"),"rest":_t("Отдыхает","Rests"),"sleep":_t("Спит","Sleeps"),"take":_t("Берёт предмет","Takes an item"),"give":_t("Передаёт предмет","Gives an item"),"speak":_t("Говорит","Speaks"),"attack":_t("Атакует","Attacks"),"treat":_t("Оказывает помощь","Treats injuries")}
 	return str(names.get(type,type))+(": "+str(action.text) if action.has("text") else "")
 
 func _limb_name(limb: String) -> String:
@@ -1415,7 +1416,8 @@ func _refresh_alpha_state()->void:
 	_intent.tooltip_text=_t("Заявленное намерение или заданная цель. Это не скрытые рассуждения модели.","Declared intention or configured goal. This is not hidden model reasoning.")
 	var blocked:String=str(activity.get("blocked_reason",""))
 	var ai_state:String=str(activity.get("ai_state",activity.get("decision_state","")))
-	_obstacle.text=(_t("Препятствие: ","Blocked: ")+blocked) if not blocked.is_empty() else (_t("Ожидает решения AI","Waiting for an AI decision") if ai_state in ["waiting","queued","requesting","thinking","pending"] else _t("",""))
+	var real_mode:bool=_info.get("mode","")=="real_vlm" or _info.get("connection",{}).get("enabled",false)
+	_obstacle.text=(_t("Препятствие: ","Blocked: ")+blocked) if not blocked.is_empty() else (_t("Ожидает решения AI","Waiting for an AI decision") if real_mode and ai_state in ["waiting","queued","requesting","thinking","pending"] else "")
 	_obstacle.visible=not _obstacle.text.is_empty()
 	var progress:float=float(activity.get("progress",-1));_activity_progress.visible=progress>=0;_activity_progress.value=progress*100.0 if progress<=1.0 else progress
 	var signature:String=selected_agent+JSON.stringify(actor.get("appearance",{}))+str(actor.get("color",""))
@@ -1439,7 +1441,7 @@ func _refresh_alpha_state()->void:
 	if not pause_reason.is_empty():_status.text=pause_reason;_status.tooltip_text=pause_reason;_status.add_theme_color_override("font_color",CORAL)
 	elif not error_text.is_empty():_status.text=_t("Ошибка подключения · откройте настройки","Connection error · open settings");_status.tooltip_text=error_text;_status.add_theme_color_override("font_color",CORAL)
 	elif not _running:_status.text=_t("Пауза · время остановлено","Paused · time is stopped");_status.add_theme_color_override("font_color",CREAM)
-	elif waiting:_status.text=_t("Ожидание AI · решения готовятся","Waiting for AI · decisions are pending");_status.add_theme_color_override("font_color",GOLD)
+	elif waiting and real_mode:_status.text=_t("Ожидание AI · решения готовятся","Waiting for AI · decisions are pending");_status.add_theme_color_override("font_color",GOLD)
 	else:_status.text=_t("История развивается","The story is unfolding");_status.add_theme_color_override("font_color",SAGE)
 	var missing_key:bool=enabled and not bool(connection.get("enabled",false)) and not bool(connection.get("has_key",false))
 	_mode.text=_t("RouterAI · требуется подключение","RouterAI · connection required") if missing_key else (_t("RouterAI · подключено","RouterAI · connected") if enabled else _t("ДЕМО · без AI","DEMO · no AI"))
@@ -1505,6 +1507,11 @@ const GOALS_EN={
  "Осмотреть новое место, найти пищу, познакомиться и попросить помощь при необходимости.": "Explore the new place, find food, meet others and ask for help when needed."
 }
 
+func _item_name(item:Dictionary)->String:
+	var label:String=str(item.get("label",_t("Предмет","Item")))
+	var english:Dictionary={"Телефон":"Phone","Личный дневник":"Personal diary","Паёк":"Ration","Аптечка":"First-aid kit","Шина":"Splint","Фотоаппарат":"Camera","Нож":"Knife","Запас общего резерва":"Community reserve ration"}
+	return str(english.get(label,label)) if language=="en" else label
+
 func _place_name(place:Dictionary)->String:
 	var label:String=str(place.get("label",place.get("id","")))
 	return str(PLACES_EN.get(label,label)) if language=="en" else label
@@ -1567,14 +1574,24 @@ func _build_chapter_dialog()->void:
 
 func _refresh_chapter()->void:
 	if _menu_visible or _info.get("replaying",false) or not is_instance_valid(_chapter_popup):return
+	if _replacing_run==int(_state.get("run_id",0)):return
+	_replacing_run=-1
 	var scenario:Dictionary=_state.get("scenario_state",{})
 	if scenario.is_empty():return
 	var key:String=str(_state.get("run_id",0))+":"+str(scenario.get("phase",1))
 	var done:bool=bool(scenario.get("completed",false))
 	if done and _debrief_key!=str(_state.get("run_id",0)):
-		_debrief_key=str(_state.get("run_id",0));_show_chapter(scenario,true)
+		_debrief_key=str(_state.get("run_id",0));_present_chapter(int(_state.get("run_id",0)),int(scenario.get("phase",1)),true)
 	elif not done and key!=_seen_chapter:
-		_seen_chapter=key;_show_chapter(scenario,false)
+		_seen_chapter=key;_present_chapter(int(_state.get("run_id",0)),int(scenario.get("phase",1)),false)
+
+func _present_chapter(run:int,phase:int,done:bool) -> void:
+	# Let the originating popup release window focus before opening its successor.
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if not is_instance_valid(_chapter_popup) or _menu_visible or _info.get("replaying",false) or run!=int(_state.get("run_id",0)):return
+	var story:Dictionary=_state.get("scenario_state",{})
+	if not story.is_empty() and phase==int(story.get("phase",1)) and done==bool(story.get("completed",false)):_show_chapter(story,done)
 
 func _show_chapter(scenario:Dictionary,debrief:bool)->void:
 	for child in _intervention_box.get_children():child.queue_free()

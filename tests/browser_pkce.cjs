@@ -80,7 +80,9 @@ async function run() {
     assert.equal(await page.evaluate(()=>JSON.parse(AISimsWeb.getStatus()).connected), true);
     await page.mouse.click(720,850);await page.waitForTimeout(500);await page.mouse.click(720,611);
     await page.waitForTimeout(1600);
-    await page.mouse.click(196,815); // A single scheduler step, using the actual transport.
+    await page.mouse.click(720,699); // Start observing this chapter using the actual transport.
+    await page.mouse.click(85,815); // Pause before exercising one full scheduler step.
+    await page.mouse.click(196,815);
     await page.waitForFunction(()=>{
       const ledger=JSON.parse(AISimsWeb.getLedger());
       const entries=Object.values(ledger.entries || {});

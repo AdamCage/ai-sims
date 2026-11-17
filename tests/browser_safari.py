@@ -88,6 +88,21 @@ def validate_copy(data):
     return payload["world"]["world"], manifest
 
 
+def diagnostics(browser, report, output):
+    try:
+        report["diagnostics"] = browser.execute_script("""
+          const input=document.getElementById('import-file'), s=JSON.parse(AISimsWeb.getStatus());
+          return {status:document.getElementById('storage-status').textContent, hasFileInput:!!input,
+            files:input?.files?.length, fileEvents:window.qaFileEvents || [],
+            operation:document.getElementById('storage-status').dataset.operation || '',
+            storageError:s.storage_error, lease:s.lease, saveRevision:s.save_revision,
+            committed:s.save_persisted};
+        """)
+        browser.save_screenshot(str(output / "failure.png"))
+    except WebDriverException:
+        report["diagnostics_unavailable"] = True
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://localhost:8732/")
@@ -111,7 +126,7 @@ def main():
             time.sleep(.5)
             tap(browser, 720, 611)
             time.sleep(3)
-            tap(browser, 85, 815)
+            tap(browser, 720, 699)
             time.sleep(8)
             tap(browser, 85, 815)
             data = export_copy(browser)
@@ -120,26 +135,52 @@ def main():
             assert len(world["agents"]) == 8 and len(world["events"]) > 1
             report["scenarios"].append({"map":name, "events":len(world["events"]), "images":len(manifest["media"])})
             browser.save_screenshot(str(args.output / f"{name}.png"))
+            # Safari's WebDriver screen capture can omit its compositor's
+            # WebGL layer. An agent's archived capture comes from Godot itself.
+            if manifest["media"]:
+                offset = struct.unpack(">I", data[4:8])[0] + 8
+                size = manifest["media"][0]["size"]
+                (args.output / f"{name}-camera.png").write_bytes(data[offset:offset+size])
         archive = (args.output / "Safari.aisims").resolve()
         archive.write_bytes(data)
     finally:
         browser.quit()
     browser = visit(args.url)
     try:
+        report["stage"] = "new profile"
         assert browser.execute_script("return AISimsWeb.getSlot('slot_3.json')") == ""
+        browser.execute_script("""
+          window.qaFileEvents=[];
+          const field=document.querySelector('#import-file');
+          for(const name of ['input','change'])field.addEventListener(name,()=>{
+            window.qaFileEvents.push({type:name,bytes:field.files[0]?.size || 0});
+          },true);
+        """)
+        report["stage"] = "file input"
         browser.find_element(By.ID, "import-file").send_keys(str(archive))
-        WebDriverWait(browser, 150).until(lambda d: d.execute_script("return document.querySelector('#storage-status').textContent.includes('Выберите слот')"))
+        WebDriverWait(browser, 15).until(lambda d: d.execute_script("return window.qaFileEvents.length>0"))
+        report["stage"] = "validate and commit"
+        status = WebDriverWait(browser, 150).until(lambda d: d.execute_script("""
+          const t=document.querySelector('#storage-status').textContent;
+          return /Выберите слот|Не удалось/.test(t) ? t : false;
+        """))
+        assert "Выберите слот" in status, status
         assert browser.execute_script("return AISimsWeb.getSlot('slot_3.json')") == manifest["slots"]["slot_3.json"]
         saved_world, restored = validate_copy(export_copy(browser))
         assert restored["media"] == manifest["media"]
         report["fresh_profile_restores_original_media"] = True
+        report["stage"] = "reopen live story"
         tap(browser, 1090, 103)
         time.sleep(2)
         resumed, _ = validate_copy(export_copy(browser))
         assert resumed["run_id"] > saved_world["run_id"]
         assert resumed["map_id"] == saved_world["map_id"] and resumed["tick"] == saved_world["tick"]
         report["loaded_into_live_world"] = True
+        report["stage"] = "complete"
         report["passed"] = True
+    except Exception:
+        diagnostics(browser,report,args.output)
+        raise
     finally:
         browser.quit()
         (args.output / "safari.json").write_text(json.dumps(report, indent=2), encoding="utf-8")

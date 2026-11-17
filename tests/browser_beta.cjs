@@ -13,12 +13,18 @@ async function run(){
   await mkdir(dir,{recursive:true});
   const browser=name==='firefox'?await firefox.launch({headless:true}):await chromium.launch({channel:name,headless:true,args:['--enable-unsafe-swiftshader']});
   const report={browser:name,version:browser.version(),scenarios:[],errors:[],url:base};
+  function collectErrors(page){
+    page.on('console',message=>{if(message.type()==='error')report.errors.push(message.text().slice(0,240));});
+    page.on('pageerror',error=>report.errors.push(error.message));
+    page.on('response',response=>{
+      if(response.status()>=400)report.errors.push('HTTP '+response.status()+' '+new URL(response.url()).pathname);
+    });
+  }
   const options={viewport:{width:1440,height:946},acceptDownloads:true};
   const context=await browser.newContext(options);
   try {
     const page=await context.newPage();
-    page.on('console',message=>{if(message.type()==='error')report.errors.push(message.text().slice(0,240));});
-    page.on('pageerror',error=>report.errors.push(error.message));
+    collectErrors(page);
     const start=Date.now();
     await page.goto(base);
     await page.waitForFunction(()=>document.querySelector('#boot').hidden,null,{timeout:120000});
@@ -44,7 +50,7 @@ async function run(){
         await page.mouse.dblclick(397,524);await page.keyboard.press('Control+a');await page.keyboard.type(process.env.BETA_COUNT);await page.keyboard.press('Enter');
       }
       await page.mouse.click(720,611);await page.waitForTimeout(1800);
-      await page.mouse.click(85,815);
+      await page.mouse.click(720,699); // Start observing the first chapter.
       if(process.env.BETA_FULL_HD)await page.setViewportSize({width:1920,height:1126});
       await page.waitForTimeout(Number(process.env.BETA_WARMUP_MS || 0));
       const metrics=await page.evaluate(async duration=>{
@@ -76,7 +82,7 @@ async function run(){
     assert.equal(await page.evaluate(()=>JSON.parse(JSON.parse(window.AISimsWeb.getSlot('slot_3.json')).payload).data.world.world.map_id),ids.at(-1));
     report.reload_preserved=true;
     await context.close();
-    const clean=await browser.newContext(options);const target=await clean.newPage();
+    const clean=await browser.newContext(options);const target=await clean.newPage();collectErrors(target);
     await target.goto(base);await target.waitForFunction(()=>document.querySelector('#boot').hidden,null,{timeout:120000});
     assert.equal(await target.evaluate(()=>window.AISimsWeb.getSlot('slot_3.json')),'');
     await target.locator('#import-file').setInputFiles(latest);
@@ -97,7 +103,10 @@ async function run(){
     await target.reload();await target.waitForFunction(()=>document.querySelector('#boot').hidden,null,{timeout:120000});
     await target.mouse.click(1090,103); // Continue saved story from the native menu.
     await target.waitForTimeout(1800);
-    const recopy=target.waitForEvent('download',{timeout:120000});
+    const recopy=Promise.race([
+      target.waitForEvent('download',{timeout:60000}),
+      target.waitForFunction(()=>document.querySelector('#storage-status').textContent.includes('Не удалось создать'),null,{timeout:60000}).then(()=>{throw new Error('Game could not read durable photographs after reload');})
+    ]);
     await target.locator('#backup').click();
     const restoredPath=path.join(dir,name+'-restored.aisims');
     await (await recopy).saveAs(restoredPath);

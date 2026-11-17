@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Three-part release version
+        description: Application version
         required: true
-        default: 0.2.0
+        default: 0.3.0-beta.1
 
 permissions:
   contents: read

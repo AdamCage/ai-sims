@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$Godot = $env:GODOT_BIN,
-    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version = '0.2.0',
+    [ValidatePattern('^\d+\.\d+\.\d+(?:-beta\.\d+)?$')][string]$Version,
     [switch]$SkipTests,
     [switch]$SkipVerify
 )
@@ -9,6 +9,12 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+if (-not $Version) {
+    $settings=[IO.File]::ReadAllText((Join-Path $projectRoot 'project.godot'))
+    $Version=[regex]::Match($settings,'(?m)^config/version="([^"]+)"').Groups[1].Value
+}
+if ($Version -notmatch '^(\d+\.\d+\.\d+)(?:-beta\.(\d+))?$') { throw 'Invalid application version' }
+$winVersion=$Matches[1]+'.'+$(if ($Matches[2]) { $Matches[2] } else { '0' })
 $buildRoot = Join-Path $projectRoot 'build'
 $sourceRoot = Join-Path $buildRoot 'release-source'
 $packageRoot = Join-Path $buildRoot 'AI-Sims-Windows-x64'
@@ -109,7 +115,7 @@ foreach ($file in $files | Sort-Object FullName -Unique) {
     Copy-Item -LiteralPath $file.FullName -Destination $destination
 }
 $stagedPreset = Join-Path $sourceRoot 'export_presets.cfg'
-$preset = [IO.File]::ReadAllText($stagedPreset) -replace 'application/file_version="[^"]*"', ('application/file_version="' + $Version + '.0"') -replace 'application/product_version="[^"]*"', ('application/product_version="' + $Version + '.0"')
+$preset = [IO.File]::ReadAllText($stagedPreset) -replace 'application/file_version="[^"]*"', ('application/file_version="' + $winVersion + '"') -replace 'application/product_version="[^"]*"', ('application/product_version="' + $winVersion + '"')
 Write-Utf8 $stagedPreset $preset
 $stagedProject = Join-Path $sourceRoot 'project.godot'
 $project = [IO.File]::ReadAllText($stagedProject)

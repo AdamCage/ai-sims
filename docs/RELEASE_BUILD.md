@@ -31,7 +31,7 @@ From the repository root:
 ```powershell
 ./tools/build_release.ps1
 # Or choose the installed engine and release version:
-./tools/build_release.ps1 -Godot 'C:\tools\Godot_v4.7.2-stable_win64_console.exe' -Version '0.2.0'
+./tools/build_release.ps1 -Godot 'C:\tools\Godot_v4.7.2-stable_win64_console.exe' -Version '0.3.0-beta.1'
 ```
 
 The script compiles the credential helper, runs `tests/run_release_tests.gd` and the separate headless `tests/png_encoder_qa.gd` lossless-worker/lifecycle suite (at least nine successful checks required), copies an allowlist of runtime source/assets into `build/release-source/`, imports that clean project, exports the release preset, adds notices and metadata, packages the ZIP, and verifies the extracted artifact. It does not call a paid AI provider. The process fails on a nonzero exit or Godot script/engine errors, including errors that Godot sometimes reports while exiting with code zero.

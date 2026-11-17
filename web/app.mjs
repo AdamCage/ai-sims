@@ -22,7 +22,12 @@ function openDB() {
 function read(name) { return new Promise((resolve, reject) => { const transaction = db.transaction('local', 'readonly'); const request = transaction.objectStore('local').get(name); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(new Error('Storage read failed')); }); }
 function write(name, value) { return new Promise((resolve, reject) => { const transaction = db.transaction('local', 'readwrite'); transaction.objectStore('local').put(value, name); transaction.oncomplete = () => resolve(); transaction.onerror = transaction.onabort = () => reject(new Error('Storage write failed')); }); }
 const ledgerQueue = new DurableQueue(value => write('ledger', value));
-const saveQueue = new DurableQueue(async value => { await write('slots', value); durableSlots = value; });
+const saveQueue = new DurableQueue(async value => {
+  // Publish the save only after the associated photos have reached IDBFS.
+  await engine.rtenv.flushUserFiles();
+  await write('slots', value);
+  durableSlots = value;
+});
 
 async function reconcileReceipts() {
   if (!key || !ledgerText) return;
@@ -225,10 +230,18 @@ $('backup').onclick = async () => {
   finally { mediaExport = null; $('backup').disabled = false; }
 };
 $('import').onclick = () => { commands.push({type:'pause',autosave:false}); $('import-file').click(); };
-$('import-file').onchange = async event => {
+let importing = false;
+async function importSelectedFile(event) {
+  const file=event.target.files[0];
+  if (!file || importing)return;
+  importing=true;
+  const status=$('storage-status');
   try {
-    const file=event.target.files[0]; if (!file)return;
+    status.dataset.operation='validate';
+    badge('Проверяем файл копии…');
     const archive=await readArchive(file);
+    status.dataset.operation='photographs';
+    badge('Восстанавливаем фотографии…');
     for (const [hash,part] of archive.images) {
       const bytes=new Uint8Array(await part.arrayBuffer());
       if(await sha256(bytes)!==hash)throw new Error('Image checksum mismatch');
@@ -236,12 +249,17 @@ $('import-file').onchange = async event => {
       await gameCommand('import_image');
     }
     mediaRestore=null;imported=archive.slots;
+    status.dataset.operation='commit';
+    badge('Сохраняем восстановленный мир…');
     await gameCommand('import');await saveQueue.tail;
     if(saveQueue.error)throw new Error();
     badge(archive.missingImages.length ? 'Выберите слот. В старой копии отсутствуют фотографии.' : 'Копия восстановлена. Выберите слот');
+    status.dataset.operation='complete';
   } catch { badge('Не удалось восстановить копию. Проверьте файл'); }
-  finally { mediaRestore=null;event.target.value=''; }
-};
+  finally { mediaRestore=null;event.target.value='';importing=false; }
+}
+$('import-file').oninput = importSelectedFile;
+$('import-file').onchange = importSelectedFile;
 $('fullscreen').onclick = () => { if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen?.(); };
 document.addEventListener('visibilitychange', () => { if (document.hidden && ready) commands.push({type:'pause'}); });
 window.addEventListener('pagehide', () => { key = ''; commands.push({type:'pause'}); });

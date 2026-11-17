@@ -51,7 +51,15 @@ async function build(packPath,out,mapDirectory,version='0.3.0-alpha') {
   if(!loader.includes(original))throw new Error('Unexpected Godot Web loader: review WASM loading before upgrading templates');
   // All hosts can serve these as ordinary binary files. Streaming decompression
   // in the browser also supports static CDNs with a 25 MiB per-file limit.
-  const compressedLoader=loader.replace(original,'preloader.loadPromise(`${loadPath}.wasm.bin`, size, true).then(response => new Response(response.body.pipeThrough(new DecompressionStream("gzip")), {headers:{"Content-Type":"application/wasm"}}))');
+  const fsSyncGuard='if(GodotFS._syncing){GodotRuntime.error("Already syncing!");return Promise.resolve()}GodotFS._syncing=true;return new Promise(';
+  const fsExports='Module["initFS"]=GodotFS.init;';
+  if(!loader.includes(fsSyncGuard) || !loader.includes(fsExports))throw new Error('Unexpected Godot IDBFS implementation: review durable save synchronization');
+  // Serialize native automatic syncs and the web slot transaction. A previous
+  // pass may already have enumerated its files before the newest photo existed.
+  const compressedLoader=loader
+    .replace(original,'preloader.loadPromise(`${loadPath}.wasm.bin`, size, true).then(response => new Response(response.body.pipeThrough(new DecompressionStream("gzip")), {headers:{"Content-Type":"application/wasm"}}))')
+    .replace(fsSyncGuard,'if(GodotFS._syncing){return GodotFS._pending.then(error=>error||GodotFS.sync())}GodotFS._syncing=true;return GodotFS._pending=new Promise(')
+    .replace(fsExports,fsExports+'Module["flushUserFiles"]=async function(){if(!GodotFS.is_persistent())throw new Error("Local media storage unavailable");const error=await GodotFS.sync();if(error)throw error;};');
   const engineName='engine-'+digest(Buffer.concat([packedWasm,Buffer.from(compressedLoader)])).slice(0,16);
   await writeFile(join(out,engineName+'.js'),compressedLoader);
   await writeFile(join(out,engineName+'.wasm.bin'),packedWasm);

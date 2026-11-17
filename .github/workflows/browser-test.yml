@@ -48,6 +48,11 @@ jobs:
 
   safari:
     needs: build
+    name: Safari / ${{ matrix.scenario }}
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [closed_block, residence, research_station]
     runs-on: macos-15
     timeout-minutes: 20
     steps:
@@ -66,9 +71,9 @@ jobs:
           node tests/serve_web.mjs build/web 8732 > "$RUNNER_TEMP/ai-sims-http.log" 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid"' EXIT
-          python tests/browser_safari.py --url http://127.0.0.1:8732/
+          python tests/browser_safari.py --url http://127.0.0.1:8732/ --scenario "${{ matrix.scenario }}"
       - name: Verify a visible game frame in Safari
-        if: always()
+        if: always() && matrix.scenario == 'closed_block'
         run: |
           node tests/serve_web.mjs build/web 8733 > "$RUNNER_TEMP/ai-sims-display.log" 2>&1 &
           server_pid=$!
@@ -77,7 +82,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: safari-acceptance
+          name: safari-acceptance-${{ matrix.scenario }}
           path: |
             test-output/beta-browser-safari/*.json
             test-output/beta-browser-safari/*.png

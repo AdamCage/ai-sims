@@ -293,22 +293,20 @@ def restore_driver(args, archive, manifest, report):
 
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--url", default="http://localhost:8732/")
-    parser.add_argument("--output", type=Path, default=Path("test-output/beta-browser-safari"))
-    args = parser.parse_args()
-    if platform.system() != "Darwin":
-        raise SystemExit("Apple Safari and its driver require macOS.")
-    args.output.mkdir(parents=True, exist_ok=True)
-    report = {"platform":platform.platform(), "url":args.url, "scenarios":[]}
+SCENARIOS = ("closed_block", "residence", "research_station")
+
+
+def run_scenario(args, name, report):
+    report["stage"]="boot " + name
     browser = visit(args.url)
     try:
         report["browser"] = browser.capabilities["browserName"]
         report["version"] = browser.capabilities["browserVersion"]
         assert report["browser"].lower() == "safari"
         assert browser.execute_script("return !!document.querySelector('canvas').getContext('webgl2')")
-        data, manifest = play_map(browser,"closed_block",0,args.output,report)
+        data, manifest = play_map(browser,name,SCENARIOS.index(name),args.output,report)
+        if name != "closed_block":
+            return
         report["export_sha256"] = hashlib.sha256(data).hexdigest()
         report["in_memory_export_read"] = browser.execute_async_script("""
           const done=arguments[arguments.length-1];
@@ -321,35 +319,35 @@ def main():
         """)
     except Exception:
         diagnostics(browser,report,args.output)
-        (args.output / "safari.json").write_text(json.dumps(report,indent=2),encoding="utf-8")
         raise
     finally:
         browser.quit()
+    # safaridriver grants read access to real files inside Safari's sandbox.
+    container=Path.home()/"Library/Containers/com.apple.Safari/Data/tmp"
+    with tempfile.TemporaryDirectory(prefix="ai-sims-",dir=container) as directory:
+        archive = Path(directory) / "Safari.aisims"
+        archive.write_bytes(data)
+        report["import_method"] = "safaridriver_container_file"
+        restore_driver(args,archive,manifest,report)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--url", default="http://localhost:8732/")
+    parser.add_argument("--output", type=Path, default=Path("test-output/beta-browser-safari"))
+    parser.add_argument("--scenario", choices=SCENARIOS)
+    args = parser.parse_args()
+    if platform.system() != "Darwin":
+        raise SystemExit("Apple Safari and its driver require macOS.")
+    args.output.mkdir(parents=True, exist_ok=True)
+    report = {"platform":platform.platform(),"url":args.url,"scenarios":[],"passed":False}
     try:
-        # safaridriver grants read access to real files inside Safari's sandbox.
-        container=Path.home()/"Library/Containers/com.apple.Safari/Data/tmp"
-        with tempfile.TemporaryDirectory(prefix="ai-sims-",dir=container) as directory:
-            archive = Path(directory) / "Safari.aisims"
-            archive.write_bytes(data)
-            report["import_method"] = "safaridriver_container_file"
-            restore_driver(args,archive,manifest,report)
+        for name in (args.scenario,) if args.scenario else SCENARIOS:
+            run_scenario(args,name,report)
+        report["stage"] = "complete"
+        report["passed"] = True
     finally:
         (args.output/"safari.json").write_text(json.dumps(report,indent=2),encoding="utf-8")
-    # Import is tested first. Start each subsequent world in its own genuine
-    # automation session so GPU allocations from one world cannot mask another.
-    for index, name in enumerate(("residence", "research_station"),start=1):
-        browser = visit(args.url)
-        try:
-            play_map(browser,name,index,args.output,report)
-        except Exception:
-            diagnostics(browser,report,args.output)
-            raise
-        finally:
-            browser.quit()
-            (args.output / "safari.json").write_text(json.dumps(report,indent=2),encoding="utf-8")
-    report["stage"] = "complete"
-    report["passed"] = True
-    (args.output / "safari.json").write_text(json.dumps(report,indent=2),encoding="utf-8")
 
 
 if __name__ == "__main__":

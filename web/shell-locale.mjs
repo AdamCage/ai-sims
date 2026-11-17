@@ -15,6 +15,7 @@ const english = {
   'Выберите слот. В старой копии отсутствуют фотографии.':'Choose a slot. This older backup did not include photos.',
   'Копия восстановлена. Выберите слот':'Backup restored. Choose a slot.',
   'Не удалось восстановить копию. Проверьте файл':'Could not restore this backup. Check the file.',
+  'Браузер не смог прочитать файл. Выберите копию из локальной папки ещё раз.':'The browser could not read this file. Select the backup again from a local folder.',
   'Игра не запущена':'The game could not start',
 };
 

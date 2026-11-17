@@ -19,7 +19,8 @@ def state(browser):
           webgl:!!gl, lost:gl?.isContextLost(), drawingBuffer:[gl?.drawingBufferWidth,gl?.drawingBufferHeight],
           attributes:ctx?.attributes || null, actualAttributes:gl?.getContextAttributes() || null,
           defaultFbo:!!ctx?.defaultFbo, defaultFboForbidBlitFramebuffer:ctx?.defaultFboForbidBlitFramebuffer ?? null,
-          engineFps:window.AISimsWeb?.renderingFps?.()
+          engineFps:window.AISimsWeb?.renderingFps?.(),
+          presentation:JSON.parse(window.AISimsWeb?.presentationStatus?.() || '{}')
         };
     """)
 

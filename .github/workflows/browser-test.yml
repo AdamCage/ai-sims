@@ -15,6 +15,7 @@ on:
       - "tools/install_godot_ci.ps1"
       - "tests/browser_safari.py"
       - "tests/browser_safari_display.py"
+      - "tests/safari_native_picker.py"
       - "tests/serve_web.mjs"
       - "web/**"
 

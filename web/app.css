@@ -2,6 +2,7 @@
 
 #playtest{width:min(590px,95vw);max-height:90dvh;overflow:auto;background:#182d38;color:#f1f1eb;border:1px solid #52646d;border-radius:12px;padding:24px}
 #playtest::backdrop{background:#07131cc9}
+#game-picture{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 #playtest header,#playtest footer{display:flex;align-items:center;justify-content:space-between;gap:12px}
 #playtest h2{margin:0;font-size:24px}
 #playtest p{font-size:14px;line-height:1.5}

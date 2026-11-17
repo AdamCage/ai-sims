@@ -2,6 +2,7 @@ import {DurableQueue, readArchive, makeArchive, referencedImages, base64ToBytes,
 
 import {installPlaytest} from './playtest.mjs';
 import {installToolbar} from './shell-locale.mjs';
+import {installWebKitPresentation} from './webkit-presentation.mjs';
 
 const $ = id => document.getElementById(id);
 const commands = [], pngJobs = new Map(), pngResults = new Map(), packJobs = new Map();
@@ -11,6 +12,7 @@ let resolveScene;
 let mediaExport = null, mediaRestore = null;
 let storageWarning = '';
 let renderingFps = 0;
+let presentation = null;
 const sceneReady = new Promise(resolve => { resolveScene = resolve; });
 let ledgerText = '', slots = {}, storageError = '', authError = '', releaseLock;
 let durableSlots = {};
@@ -133,6 +135,7 @@ window.AISimsWeb = Object.freeze({
   isReady: () => ready, hasLease: () => lease, gameReady: () => resolveScene(),
   frameSample: value => { renderingFps = Number(value); },
   renderingFps: () => renderingFps,
+  presentationStatus: () => JSON.stringify(presentation || {mode:'native'}),
   protectedImages: (name, value) => {
     // Include both earlier committed slots and the in-flight generation. A
     // failed save must leave every image from the durable version readable.
@@ -204,6 +207,7 @@ async function boot() {
   if (manifest.schema !== 1 || !manifest.core) throw new Error('Unsupported content manifest');
   engine = new window.Engine({...window.AI_SIMS_ENGINE_CONFIG, canvas:$('canvas'), focusCanvas:true, onProgress:(loaded,total) => { if (total) { $('boot-progress').value = loaded / total; report(`Загружаем мир… ${Math.round(loaded / total * 100)}%`); } }, onPrint:message => console.info(String(message)), onPrintError:message => { console.error(String(message)); if (/indexeddb|quota|persist.*fail|fs.*sync.*fail/i.test(String(message))) storageError = 'Local storage failed. Export a backup before closing.'; }});
   const canvas = $('canvas');
+  presentation = installWebKitPresentation(canvas);
   const resize = () => {
     const box = canvas.parentElement.getBoundingClientRect();
     const width = Math.max(1,Math.round(box.width)), height = Math.max(1,Math.round(box.height));
@@ -284,7 +288,8 @@ async function importSelectedFile(event) {
     ]);
     status.dataset.failure = /^[a-z][a-z0-9_]{0,40}$/.test(error?.archiveCode || '')
       ? error.archiveCode : causes.get(error?.message) || causes.get(error?.name) || 'other';
-    badge('Не удалось восстановить копию. Проверьте файл');
+    const unreadable = /^(selected_file_unreadable|file_read|file_access|file_missing)$/.test(status.dataset.failure);
+    badge(unreadable ? 'Браузер не смог прочитать файл. Выберите копию из локальной папки ещё раз.' : 'Не удалось восстановить копию. Проверьте файл');
   }
   finally { mediaRestore=null;event.target.value='';importing=false; }
 }

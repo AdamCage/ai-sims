@@ -13,10 +13,13 @@ import hashlib
 import json
 import platform
 import struct
+import shutil
 import subprocess
 import tempfile
 import time
 from pathlib import Path
+
+from safari_native_picker import restore as restore_native
 
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
@@ -183,10 +186,53 @@ def play_map(browser, name, index, output, report):
     return data, manifest
 
 
+def restore_driver(args, archive, manifest, report):
+    browser = visit(args.url)
+    try:
+        report["stage"] = "new profile"
+        assert browser.execute_script("return AISimsWeb.getSlot('slot_3.json')") == ""
+        browser.execute_script("""
+          window.qaFileEvents=[];
+          const field=document.querySelector('#import-file');
+          for(const name of ['input','change'])field.addEventListener(name,()=>{
+            if(field.files[0])window.qaChosenFile=field.files[0];
+            window.qaFileEvents.push({type:name,bytes:field.files[0]?.size || 0});
+          },true);
+        """)
+        report["stage"] = "file input"
+        browser.find_element(By.ID, "import-file").send_keys(str(archive))
+        WebDriverWait(browser, 15).until(lambda d: d.execute_script("return window.qaFileEvents.length>0"))
+        report["stage"] = "validate and commit"
+        operation = WebDriverWait(browser, 150).until(lambda d: d.execute_script("""
+          const {operation,failure}=document.querySelector('#storage-status').dataset;
+          return failure || (operation==='complete' && operation);
+        """))
+        assert operation == "complete", operation
+        assert browser.execute_script("return AISimsWeb.getSlot('slot_3.json')") == manifest["slots"]["slot_3.json"]
+        saved_world, restored = validate_copy(export_copy(browser))
+        assert restored["media"] == manifest["media"]
+        report["fresh_profile_restores_original_media"] = True
+        report["stage"] = "reopen live story"
+        tap(browser, 1090, 103)
+        time.sleep(2)
+        resumed, _ = validate_copy(export_copy(browser))
+        assert resumed["run_id"] > saved_world["run_id"]
+        assert resumed["map_id"] == saved_world["map_id"] and resumed["tick"] == saved_world["tick"]
+        report["loaded_into_live_world"] = True
+    except Exception:
+        diagnostics(browser,report,args.output)
+        raise
+    finally:
+        browser.quit()
+        (args.output / "safari.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://localhost:8732/")
     parser.add_argument("--output", type=Path, default=Path("test-output/beta-browser-safari"))
+    parser.add_argument("--export-dir",type=Path,default=Path("build/web"))
     args = parser.parse_args()
     if platform.system() != "Darwin":
         raise SystemExit("Apple Safari and its driver require macOS.")
@@ -215,51 +261,32 @@ def main():
         raise
     finally:
         browser.quit()
-    browser = visit(args.url)
-    upload = tempfile.TemporaryDirectory(prefix="ai-sims-safari-", dir="/private/tmp")
     try:
-        report["stage"] = "new profile"
-        assert browser.execute_script("return AISimsWeb.getSlot('slot_3.json')") == ""
-        browser.execute_script("""
-          window.qaFileEvents=[];
-          const field=document.querySelector('#import-file');
-          for(const name of ['input','change'])field.addEventListener(name,()=>{
-            if(field.files[0])window.qaChosenFile=field.files[0];
-            window.qaFileEvents.push({type:name,bytes:field.files[0]?.size || 0});
-          },true);
-        """)
-        report["stage"] = "file input"
-        # Keep a real disk file available to safaridriver for the entire restore,
-        # outside the source checkout and independent of CI artifact permissions.
-        archive = Path(upload.name) / "Safari.aisims"
-        archive.write_bytes(data)
-        browser.find_element(By.ID, "import-file").send_keys(str(archive))
-        WebDriverWait(browser, 15).until(lambda d: d.execute_script("return window.qaFileEvents.length>0"))
-        report["stage"] = "validate and commit"
-        operation = WebDriverWait(browser, 150).until(lambda d: d.execute_script("""
-          const {operation,failure}=document.querySelector('#storage-status').dataset;
-          return failure || (operation==='complete' && operation);
-        """))
-        assert operation == "complete", operation
-        assert browser.execute_script("return AISimsWeb.getSlot('slot_3.json')") == manifest["slots"]["slot_3.json"]
-        saved_world, restored = validate_copy(export_copy(browser))
-        assert restored["media"] == manifest["media"]
-        report["fresh_profile_restores_original_media"] = True
-        report["stage"] = "reopen live story"
-        tap(browser, 1090, 103)
-        time.sleep(2)
-        resumed, _ = validate_copy(export_copy(browser))
-        assert resumed["run_id"] > saved_world["run_id"]
-        assert resumed["map_id"] == saved_world["map_id"] and resumed["tick"] == saved_world["tick"]
-        report["loaded_into_live_world"] = True
-    except Exception:
-        diagnostics(browser,report,args.output)
-        raise
+        with tempfile.TemporaryDirectory(prefix="ai-sims-picker-",dir="/private/tmp") as directory:
+            archive = Path(directory) / "Safari.aisims"
+            archive.write_bytes(data)
+            report["stage"] = "native file chooser"
+            try:
+                restore_native(args.export_dir,archive,manifest,report)
+            except (OSError,RuntimeError,subprocess.TimeoutExpired) as error:
+                safe = str(error)
+                report["native_picker_failure"] = safe if safe.replace("_","").isalnum() and len(safe)<64 else type(error).__name__
+                # Use a real input event and real disk file in Safari's own process
+                # container on runners that cannot operate the macOS Open dialog.
+                container = Path.home()/"Library/Containers/com.apple.Safari/Data/tmp"
+                if not container.is_dir():
+                    raise RuntimeError("Safari container temporary directory unavailable") from error
+                with tempfile.TemporaryDirectory(prefix="ai-sims-",dir=container) as safari_tmp:
+                    selected = Path(safari_tmp)/archive.name
+                    shutil.copyfile(archive,selected)
+                    report["import_method"] = "safaridriver_container_file"
+                    restore_driver(args,selected,manifest,report)
+            else:
+                report["import_method"] = "ordinary_safari_system_picker"
+                report["fresh_profile_restores_original_media"] = True
+                report["loaded_into_live_world"] = True
     finally:
-        browser.quit()
-        upload.cleanup()
-        (args.output / "safari.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-
+        (args.output/"safari.json").write_text(json.dumps(report,indent=2),encoding="utf-8")
     # Import is tested first. Start each subsequent world in its own genuine
     # automation session so GPU allocations from one world cannot mask another.
     for index, name in enumerate(("residence", "research_station"),start=1):

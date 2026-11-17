@@ -17,6 +17,13 @@ const workerURL=new URL('../web/png-worker.mjs',import.meta.url).href;
 const worker=new Worker(`const {parentPort}=require('node:worker_threads');global.self={postMessage:(value,transfer)=>parentPort.postMessage(value,transfer)};import(${JSON.stringify(workerURL)}).then(()=>parentPort.on('message',data=>self.onmessage({data})));`,{eval:true});
 const copy=original.slice();const workerResult=new Promise((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);});worker.postMessage({id:1,width:640,height:360,rgba:copy.buffer},[copy.buffer]);original.fill(7);const result=await workerResult;check(result.id===1&&!result.error,'real worker returns PNG result');const decoded=decode(new Uint8Array(result.png));check(decoded.rgba[0]===0&&decoded.rgba[100]===((100*131)&255),'worker owns private snapshot despite caller mutation');await worker.terminate();
 check(Buffer.from(base64ToBytes(bytesToBase64(pixels))).equals(Buffer.from(pixels)),'bulk browser bridge base64 keeps exact RGBA bytes');
+for(const size of [0,1,2,3,32767,32768,32769,640*360*4]){
+  const frame=Uint8Array.from({length:size},(_,i)=>(i*97+i%37)&255);
+  const reference=Buffer.from(frame).toString('base64');
+  assert.equal(bytesToBase64(frame),reference);
+  assert.deepEqual(base64ToBytes(reference),frame);
+}
+check(true,'RGBA bridge matches reference base64 across padding, chunk boundaries and full camera frames');
 let allowCommit;const store=[];const queue=new DurableQueue(async value=>{await new Promise(resolve=>{allowCommit=resolve;});store.push(value);});
 const revision=queue.write('reserved-before-network');await Promise.resolve();check(queue.persisted<revision,'pending IndexedDB reservation cannot dispatch paid request');allowCommit();await queue.tail;check(queue.persisted===revision&&store[0]==='reserved-before-network','dispatch becomes eligible only after durable commit');
 let writes=0;const broken=new DurableQueue(async()=>{writes++;throw new Error('quota');});broken.write('first');broken.write('second');await broken.tail;check(Boolean(broken.error)&&broken.persisted===0&&writes===1,'storage failure fails closed and blocks subsequent commits');
@@ -27,6 +34,18 @@ const story=JSON.stringify({schema:2,data:{memory:{image_ref:photoHash}}});
 const save={'slot_3.json':JSON.stringify({payload:story,sha256:await sha256(new TextEncoder().encode(story))})};
 const archive=makeArchive(save,new Map([[photoHash,photo]])),read=await readArchive(archive);
 check(read.slots['slot_3.json']===save['slot_3.json'] && await sha256(await read.images.get(photoHash).arrayBuffer())===photoHash,'binary copy restores the exact immutable photograph and its save');
+// A selected disk file may be readable directly while its derived ranges
+// cannot retain the OS file grant. Exercise the production small-file path.
+class SelectedFile extends File {
+  slice() { throw new DOMException('Detached backing file','NotReadableError'); }
+}
+const selected=new SelectedFile([archive],'story.aisims');
+const imported=await readArchive(selected);
+check(imported.slots['slot_3.json']===save['slot_3.json'] && await sha256(await imported.images.get(photoHash).arrayBuffer())===photoHash,'selected file restores slots and photographs from its original bytes');
+const invalidManifest=new Uint8Array([65,73,83,50,0,0,0,1,255]);
+await assert.rejects(()=>readArchive(new Blob([invalidManifest])),e=>e.archiveCode==='manifest_encoding');checks++;
+const invalidEnvelope=JSON.stringify({schema:'ai-sims-local-backup-v1',slots:{'slot_1.json':'invalid private content'}});
+await assert.rejects(()=>readArchive(new Blob([invalidEnvelope])),e=>e.archiveCode==='slot_wrapper_json'&&!e.message.includes('private'));checks++;
 assert.throws(()=>makeArchive(save,new Map()));checks++;
 await assert.rejects(()=>readArchive(archive.slice(0,-1)));checks++;
 const older=await readArchive(new Blob([makeBackup(save)]));

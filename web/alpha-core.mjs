@@ -124,8 +124,18 @@ export async function readArchive(selected) {
   }
   return {slots, images, missingImages};
 }
-export function base64ToBytes(value) { return Uint8Array.from(atob(value), c => c.charCodeAt(0)); }
-export function bytesToBase64(bytes) { let result = ''; for (let offset = 0; offset < bytes.length; offset += 32768) result += String.fromCharCode(...bytes.subarray(offset, offset + 32768)); return btoa(result); }
+export function base64ToBytes(value) {
+  if (typeof Uint8Array.fromBase64 === 'function') return Uint8Array.fromBase64(value);
+  return Uint8Array.from(atob(value), c => c.charCodeAt(0));
+}
+export function bytesToBase64(bytes) {
+  if (typeof bytes.toBase64 === 'function') return bytes.toBase64();
+  let result = '';
+  for (let offset = 0; offset < bytes.length; offset += 32768) {
+    result += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
+  }
+  return btoa(result);
+}
 export async function sha256(bytes) { return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(value => value.toString(16).padStart(2, '0')).join(''); }
 export function base64url(bytes) { return bytesToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
 export class DurableQueue {

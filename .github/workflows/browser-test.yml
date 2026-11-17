@@ -14,6 +14,7 @@ on:
       - "tools/*web*"
       - "tools/install_godot_ci.ps1"
       - "tests/browser_safari.py"
+      - "tests/serve_web.mjs"
       - "web/**"
 
 permissions:
@@ -61,7 +62,7 @@ jobs:
         run: |
           python -m pip install selenium
           sudo safaridriver --enable
-          python -m http.server 8732 --bind 127.0.0.1 --directory build/web > "$RUNNER_TEMP/ai-sims-http.log" 2>&1 &
+          node tests/serve_web.mjs build/web 8732 > "$RUNNER_TEMP/ai-sims-http.log" 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid"' EXIT
           python tests/browser_safari.py --url http://127.0.0.1:8732/

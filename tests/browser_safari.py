@@ -8,6 +8,7 @@
 """
 import argparse
 import base64
+import ctypes
 import hashlib
 import json
 import platform
@@ -65,6 +66,7 @@ def export_copy(browser):
         HTMLAnchorElement.prototype.click = function() {
           if (this.download !== 'AI-Sims.aisims') return click.call(this);
           fetch(this.href).then(r => r.blob()).then(blob => {
+            window.qaDownloadBlob = blob;
             const reader = new FileReader();
             reader.onload = () => window.testBackup = reader.result.split(',')[1];
             reader.readAsDataURL(blob);
@@ -97,6 +99,10 @@ def validate_copy(data):
 def capture_compositor(browser, path):
     # An independent picture of the visible Safari window from macOS. Some
     # hosted runners deny Screen Recording; record that outcome explicitly.
+    quartz = ctypes.CDLL("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
+    quartz.CGPreflightScreenCaptureAccess.restype = ctypes.c_bool
+    if not quartz.CGPreflightScreenCaptureAccess():
+        return False
     rect = browser.get_window_rect()
     bounds = ",".join(str(round(rect[key])) for key in ("x","y","width","height"))
     try:
@@ -105,6 +111,32 @@ def capture_compositor(browser, path):
     except (OSError, subprocess.TimeoutExpired):
         return False
     return result.returncode == 0 and path.is_file() and path.stat().st_size > 0
+
+
+def canvas_sample(browser):
+    try:
+        return browser.execute_async_script("""
+          const finish=arguments[arguments.length-1],canvas=document.querySelector('#canvas');
+          let done=false,attempts=0;
+          const complete=result=>{if(!done){done=true;finish(result);}};
+          // Background WebGL pages may receive no animation frame. This is an
+          // optional diagnostic alongside the archived individual camera and OS screenshot.
+          setTimeout(()=>complete({colors:0,reason:'no_animation_frame'}),1500);
+          function capture(){
+            if(done)return;
+            try {
+              const thumb=document.createElement('canvas');thumb.width=64;thumb.height=40;
+              const ctx=thumb.getContext('2d');ctx.drawImage(canvas,0,0,64,40);
+              const colors=new Set(new Uint32Array(ctx.getImageData(0,0,64,40).data.buffer)).size;
+              if(colors>32)return complete({colors,png:canvas.toDataURL().split(',')[1]});
+              if(++attempts>=12)return complete({colors,reason:'empty_compositor_layer'});
+              requestAnimationFrame(capture);
+            } catch {complete({colors:0,reason:'canvas_read_failed'});}
+          }
+          requestAnimationFrame(capture);
+        """)
+    except WebDriverException:
+        return {"colors":0,"reason":"webdriver_capture_unavailable"}
 
 
 def diagnostics(browser, report, output):
@@ -138,7 +170,8 @@ def diagnostics(browser, report, output):
                 }));
                 out.blob=await probe(()=>file.arrayBuffer());
                 try {
-                  const {readArchive}=await import('./alpha-core.mjs');
+                  const app=document.querySelector('script[type="module"][src$="/app.mjs"]');
+                  const {readArchive}=await import(new URL('alpha-core.mjs',app.src).href);
                   await readArchive(file);
                   out.validator='pass';
                 } catch(e) {out.validator=/^[a-z][a-z0-9_]{0,40}$/.test(e?.archiveCode)?e.archiveCode:safe(e);}
@@ -185,20 +218,10 @@ def main():
             report["scenarios"].append({"map":name, "events":len(world["events"]), "images":len(manifest["media"])})
             browser.save_screenshot(str(args.output / f"{name}.png"))
             report["scenarios"][-1]["compositor"] = capture_compositor(browser,args.output/f"{name}-compositor.png")
-            pixels = browser.execute_async_script("""
-              const complete=arguments[arguments.length-1], canvas=document.querySelector('#canvas');
-              let attempts=0;
-              function capture(){
-                const thumb=document.createElement('canvas');thumb.width=64;thumb.height=40;
-                const ctx=thumb.getContext('2d');ctx.drawImage(canvas,0,0,64,40);
-                const colors=new Set(new Uint32Array(ctx.getImageData(0,0,64,40).data.buffer)).size;
-                if(colors>32)return complete({colors,png:canvas.toDataURL().split(',')[1]});
-                if(++attempts>=12)return complete({colors});
-                requestAnimationFrame(capture);
-              }
-              requestAnimationFrame(capture);
-            """)
+            pixels = canvas_sample(browser)
             report["scenarios"][-1]["canvas_colors"] = pixels["colors"]
+            if "reason" in pixels:
+                report["scenarios"][-1]["capture_note"] = pixels["reason"]
             if "png" in pixels:
                 (args.output / f"{name}-canvas.png").write_bytes(base64.b64decode(pixels["png"]))
             # Safari's WebDriver screen capture can omit its compositor's
@@ -208,6 +231,15 @@ def main():
                 size = manifest["media"][0]["size"]
                 (args.output / f"{name}-camera.png").write_bytes(data[offset:offset+size])
         report["export_sha256"] = hashlib.sha256(data).hexdigest()
+        report["in_memory_export_read"] = browser.execute_async_script("""
+          const done=arguments[arguments.length-1];
+          (async()=>{
+            const app=document.querySelector('script[type="module"][src$="/app.mjs"]');
+            const {readArchive}=await import(new URL('alpha-core.mjs',app.src).href);
+            const archive=await readArchive(window.qaDownloadBlob);
+            return {ok:true,images:archive.images.size,slots:Object.keys(archive.slots).length};
+          })().then(done,e=>done({ok:false,reason:/^[a-z][a-z0-9_]{0,40}$/.test(e?.archiveCode)?e.archiveCode:'archive_read_failed'}));
+        """)
     except Exception:
         diagnostics(browser,report,args.output)
         (args.output / "safari.json").write_text(json.dumps(report,indent=2),encoding="utf-8")

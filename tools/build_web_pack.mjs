@@ -54,9 +54,15 @@ async function build(packPath,out,mapDirectory,version='0.3.0-alpha') {
   const fsSyncGuard='if(GodotFS._syncing){GodotRuntime.error("Already syncing!");return Promise.resolve()}GodotFS._syncing=true;return new Promise(';
   const fsExports='Module["initFS"]=GodotFS.init;';
   if(!loader.includes(fsSyncGuard) || !loader.includes(fsExports))throw new Error('Unexpected Godot IDBFS implementation: review durable save synchronization');
+  const createContext='var contextHandle=GL.createContext(canvas,contextAttributes);';
+  if(loader.split(createContext).length!==2)throw new Error('Review WebGL frame presentation for this export template');
+  // Keep Godot's explicit frame boundaries, but present directly to WebKit's
+  // canvas. Its final framebuffer blit can leave a running game invisible.
+  const webkitContext='if(navigator.vendor==="Apple Computer, Inc."){contextAttributes.renderViaOffscreenBackBuffer=false;}';
   // Serialize native automatic syncs and the web slot transaction. A previous
   // pass may already have enumerated its files before the newest photo existed.
   const compressedLoader=loader
+    .replace(createContext,webkitContext+createContext)
     .replace(original,'preloader.loadPromise(`${loadPath}.wasm.bin`, size, true).then(response => new Response(response.body.pipeThrough(new DecompressionStream("gzip")), {headers:{"Content-Type":"application/wasm"}}))')
     .replace(fsSyncGuard,'if(GodotFS._syncing){return GodotFS._pending.then(error=>error||GodotFS.sync())}GodotFS._syncing=true;return GodotFS._pending=new Promise(')
     .replace(fsExports,fsExports+'Module["flushUserFiles"]=async function(){if(!GodotFS.is_persistent())throw new Error("Local media storage unavailable");const error=await GodotFS.sync();if(error)throw error;};');

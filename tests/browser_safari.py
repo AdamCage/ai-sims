@@ -113,32 +113,6 @@ def capture_compositor(browser, path):
     return result.returncode == 0 and path.is_file() and path.stat().st_size > 0
 
 
-def canvas_sample(browser):
-    try:
-        return browser.execute_async_script("""
-          const finish=arguments[arguments.length-1],canvas=document.querySelector('#canvas');
-          let done=false,attempts=0;
-          const complete=result=>{if(!done){done=true;finish(result);}};
-          // Background WebGL pages may receive no animation frame. This is an
-          // optional diagnostic alongside the archived individual camera and OS screenshot.
-          setTimeout(()=>complete({colors:0,reason:'no_animation_frame'}),1500);
-          function capture(){
-            if(done)return;
-            try {
-              const thumb=document.createElement('canvas');thumb.width=64;thumb.height=40;
-              const ctx=thumb.getContext('2d');ctx.drawImage(canvas,0,0,64,40);
-              const colors=new Set(new Uint32Array(ctx.getImageData(0,0,64,40).data.buffer)).size;
-              if(colors>32)return complete({colors,png:canvas.toDataURL().split(',')[1]});
-              if(++attempts>=12)return complete({colors,reason:'empty_compositor_layer'});
-              requestAnimationFrame(capture);
-            } catch {complete({colors:0,reason:'canvas_read_failed'});}
-          }
-          requestAnimationFrame(capture);
-        """)
-    except WebDriverException:
-        return {"colors":0,"reason":"webdriver_capture_unavailable"}
-
-
 def diagnostics(browser, report, output):
     try:
         report["diagnostics"] = browser.execute_script("""
@@ -184,6 +158,31 @@ def diagnostics(browser, report, output):
         report["diagnostics_unavailable"] = True
 
 
+def play_map(browser, name, index, output, report):
+    report["stage"] = "play " + name
+    tap(browser, (262, 720, 1168)[index], 850)
+    time.sleep(.5)
+    tap(browser, 720, 611)
+    time.sleep(3)
+    tap(browser, 720, 699)
+    time.sleep(8)
+    tap(browser, 85, 815)
+    data = export_copy(browser)
+    world, manifest = validate_copy(data)
+    assert world["map_id"] == name and world["elapsed_minutes"] > 0
+    assert len(world["agents"]) == 8 and len(world["events"]) > 1
+    report["scenarios"].append({"map":name, "events":len(world["events"]), "images":len(manifest["media"])})
+    browser.save_screenshot(str(output / f"{name}.png"))
+    report["scenarios"][-1]["compositor"] = capture_compositor(browser,output/f"{name}-compositor.png")
+    # Safari's WebDriver screen capture can omit its compositor's
+    # WebGL layer. An agent's archived capture comes from Godot itself.
+    if manifest["media"]:
+        offset = struct.unpack(">I", data[4:8])[0] + 8
+        size = manifest["media"][0]["size"]
+        (output / f"{name}-camera.png").write_bytes(data[offset:offset+size])
+    return data, manifest
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://localhost:8732/")
@@ -199,37 +198,7 @@ def main():
         report["version"] = browser.capabilities["browserVersion"]
         assert report["browser"].lower() == "safari"
         assert browser.execute_script("return !!document.querySelector('canvas').getContext('webgl2')")
-        for index, name in enumerate(("closed_block", "residence", "research_station")):
-            report["stage"] = "play " + name
-            if index:
-                tap(browser, 1380, 96)
-                time.sleep(.5)
-            tap(browser, (262, 720, 1168)[index], 850)
-            time.sleep(.5)
-            tap(browser, 720, 611)
-            time.sleep(3)
-            tap(browser, 720, 699)
-            time.sleep(8)
-            tap(browser, 85, 815)
-            data = export_copy(browser)
-            world, manifest = validate_copy(data)
-            assert world["map_id"] == name and world["elapsed_minutes"] > 0
-            assert len(world["agents"]) == 8 and len(world["events"]) > 1
-            report["scenarios"].append({"map":name, "events":len(world["events"]), "images":len(manifest["media"])})
-            browser.save_screenshot(str(args.output / f"{name}.png"))
-            report["scenarios"][-1]["compositor"] = capture_compositor(browser,args.output/f"{name}-compositor.png")
-            pixels = canvas_sample(browser)
-            report["scenarios"][-1]["canvas_colors"] = pixels["colors"]
-            if "reason" in pixels:
-                report["scenarios"][-1]["capture_note"] = pixels["reason"]
-            if "png" in pixels:
-                (args.output / f"{name}-canvas.png").write_bytes(base64.b64decode(pixels["png"]))
-            # Safari's WebDriver screen capture can omit its compositor's
-            # WebGL layer. An agent's archived capture comes from Godot itself.
-            if manifest["media"]:
-                offset = struct.unpack(">I", data[4:8])[0] + 8
-                size = manifest["media"][0]["size"]
-                (args.output / f"{name}-camera.png").write_bytes(data[offset:offset+size])
+        data, manifest = play_map(browser,"closed_block",0,args.output,report)
         report["export_sha256"] = hashlib.sha256(data).hexdigest()
         report["in_memory_export_read"] = browser.execute_async_script("""
           const done=arguments[arguments.length-1];
@@ -267,11 +236,11 @@ def main():
         browser.find_element(By.ID, "import-file").send_keys(str(archive))
         WebDriverWait(browser, 15).until(lambda d: d.execute_script("return window.qaFileEvents.length>0"))
         report["stage"] = "validate and commit"
-        status = WebDriverWait(browser, 150).until(lambda d: d.execute_script("""
-          const t=document.querySelector('#storage-status').textContent;
-          return /Выберите слот|Не удалось/.test(t) ? t : false;
+        operation = WebDriverWait(browser, 150).until(lambda d: d.execute_script("""
+          const {operation,failure}=document.querySelector('#storage-status').dataset;
+          return failure || (operation==='complete' && operation);
         """))
-        assert "Выберите слот" in status, status
+        assert operation == "complete", operation
         assert browser.execute_script("return AISimsWeb.getSlot('slot_3.json')") == manifest["slots"]["slot_3.json"]
         saved_world, restored = validate_copy(export_copy(browser))
         assert restored["media"] == manifest["media"]
@@ -283,8 +252,6 @@ def main():
         assert resumed["run_id"] > saved_world["run_id"]
         assert resumed["map_id"] == saved_world["map_id"] and resumed["tick"] == saved_world["tick"]
         report["loaded_into_live_world"] = True
-        report["stage"] = "complete"
-        report["passed"] = True
     except Exception:
         diagnostics(browser,report,args.output)
         raise
@@ -292,6 +259,22 @@ def main():
         browser.quit()
         upload.cleanup()
         (args.output / "safari.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+    # Import is tested first. Start each subsequent world in its own genuine
+    # automation session so GPU allocations from one world cannot mask another.
+    for index, name in enumerate(("residence", "research_station"),start=1):
+        browser = visit(args.url)
+        try:
+            play_map(browser,name,index,args.output,report)
+        except Exception:
+            diagnostics(browser,report,args.output)
+            raise
+        finally:
+            browser.quit()
+            (args.output / "safari.json").write_text(json.dumps(report,indent=2),encoding="utf-8")
+    report["stage"] = "complete"
+    report["passed"] = True
+    (args.output / "safari.json").write_text(json.dumps(report,indent=2),encoding="utf-8")
 
 
 if __name__ == "__main__":

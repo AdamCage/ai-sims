@@ -206,8 +206,9 @@ async function boot() {
   const canvas = $('canvas');
   const resize = () => {
     const box = canvas.parentElement.getBoundingClientRect();
-    canvas.width = Math.max(1,Math.round(box.width));
-    canvas.height = Math.max(1,Math.round(box.height));
+    const width = Math.max(1,Math.round(box.width)), height = Math.max(1,Math.round(box.height));
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
   };
   resize();
   new ResizeObserver(resize).observe(canvas.parentElement);

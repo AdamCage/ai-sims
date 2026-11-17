@@ -81,7 +81,12 @@ func pixel_map(map_id:String)->void:
 	var active:=0
 	for viewport in world.agent_viewports.values():
 		if viewport.render_target_update_mode==SubViewport.UPDATE_ALWAYS:active+=1
-	check(active==1,"only selected eyes render continuously after capture sweep: "+map_id)
+	check(active==0 and world.observer_viewport.render_target_update_mode==SubViewport.UPDATE_ALWAYS and world.human_viewport.render_target_update_mode==SubViewport.UPDATE_DISABLED,"observer renders while twenty capture viewports are dormant: "+map_id)
+	world.set_first_person(true)
+	await frames(2)
+	check(world.human_viewport.render_target_update_mode==SubViewport.UPDATE_ALWAYS and world.observer_viewport.render_target_update_mode==SubViewport.UPDATE_DISABLED,"selected first-person view renders without drawing the observer scene: "+map_id)
+	world.set_first_person(false)
+	await frames(2)
 	world.observer_texture().get_image().save_png(OUTPUT.path_join(map_id+"_observer.png"))
 	var pose:=occlusion_pose(state)
 	check(not pose.is_empty(),"real map supplies physical wall occlusion fixture: "+map_id)
@@ -109,12 +114,17 @@ func pixel_map(map_id:String)->void:
 		state.items.erase("qa_visible");world.sync_state(state,true);await frames(2)
 		var visible_removed:Image=await capture("person_00")
 		check(hidden_removed.get_data()!=visible_removed.get_data(),"removing visible object changes actual agent pixels: "+map_id)
+		world.focus_position(pose.visible)
+		await frames(2)
 		var observer_before:PackedByteArray=world.observer_texture().get_image().get_data()
 		# Keep the camera outside the box and the box in front of the wall;
 		# otherwise back-face culling makes the negative control meaningless.
 		var overlay:=MeshInstance3D.new();var cube:=BoxMesh.new();cube.size=Vector3(.8,.8,.8);overlay.mesh=cube
 		overlay.layers=World.OVERLAY;overlay.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var material:=StandardMaterial3D.new();material.albedo_color=Color.MAGENTA;material.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED;overlay.material_override=material
+		# Observer labels draw over furniture and facades. Exercise that same
+		# worst case so a wall cannot hide the fixture from the positive control.
+		var material:=StandardMaterial3D.new();material.albedo_color=Color.MAGENTA;material.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
+		material.no_depth_test=true;material.render_priority=100;overlay.material_override=material
 		overlay.position=Vector3(float(pose.visible[0]),1.5,float(pose.visible[1]));world._content.add_child(overlay)
 		await frames(3)
 		var overlay_image:Image=await capture("person_00")

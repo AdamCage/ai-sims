@@ -13,29 +13,33 @@ import hashlib
 import json
 import platform
 import struct
-import shutil
 import subprocess
 import tempfile
 import time
 from pathlib import Path
 
-from safari_native_picker import restore as restore_native
-
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.actions.action_builder import ActionBuilder
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 
 
 def visit(url):
     browser = webdriver.Safari()
     browser.get(url)
-    extra = browser.execute_script("return [outerWidth-innerWidth, outerHeight-innerHeight]")
+    width,height = browser.execute_script("""return [Math.min(screen.availWidth,1440+outerWidth-innerWidth),
+        Math.min(screen.availHeight,946+outerHeight-innerHeight)]""")
     try:
-        browser.set_window_size(1440 + extra[0], 946 + extra[1])
+        browser.set_window_rect(x=0,y=0,width=width,height=height)
     except WebDriverException:
         browser.maximize_window()
+    wait_for_game(browser)
+    return browser
+
+
+def wait_for_game(browser):
     WebDriverWait(browser, 150).until(lambda d: d.execute_script("return document.querySelector('#boot').hidden"))
     # Preserve the tested game aspect ratio on smaller macOS runner displays.
     browser.execute_script("""
@@ -44,7 +48,6 @@ def visit(url):
       main.style.width = Math.floor(1440*factor) + 'px';
       main.style.height = Math.floor(900*factor) + 'px';
     """)
-    return browser
 
 
 def tap(browser, x, y):
@@ -63,22 +66,42 @@ def export_copy(browser):
     # The temporary automation session need not change Safari download preferences.
     browser.execute_script("""
       window.testBackup = null;
+      window.qaExport = {stage:'armed',buttonClicks:0};
       if (!window.copyObserved) {
         window.copyObserved = true;
+        document.querySelector('#backup').addEventListener('click', event => {
+          window.qaExport.buttonClicks++;
+          window.qaExport.trusted = event.isTrusted;
+        }, true);
+        const objectURL=URL.createObjectURL;
+        let prepared;
+        URL.createObjectURL = function(blob) {
+          const href=objectURL.call(this,blob);
+          if(blob instanceof Blob) prepared={href,blob};
+          return href;
+        };
         const click = HTMLAnchorElement.prototype.click;
         HTMLAnchorElement.prototype.click = function() {
           if (this.download !== 'AI-Sims.aisims') return click.call(this);
-          fetch(this.href).then(r => r.blob()).then(blob => {
-            window.qaDownloadBlob = blob;
-            const reader = new FileReader();
-            reader.onload = () => window.testBackup = reader.result.split(',')[1];
-            reader.readAsDataURL(blob);
-          });
+          window.qaExport.stage='download';
+          if(prepared?.href!==this.href) {window.qaExport.stage='unknown_url';return;}
+          window.qaDownloadBlob=prepared.blob;
+          window.qaExport.bytes=prepared.blob.size;
+          const reader=new FileReader();
+          reader.onload=()=>{window.testBackup=reader.result.split(',')[1];window.qaExport.stage='complete';};
+          reader.onerror=()=>{window.qaExport.stage='read_error';};
+          reader.readAsDataURL(prepared.blob);
         };
       }
     """)
-    browser.find_element(By.ID, "backup").click()
-    WebDriverWait(browser, 150).until(lambda d: d.execute_script("return Boolean(window.testBackup)"))
+    backup=browser.find_element(By.ID, "backup")
+    browser.execute_script("arguments[0].focus()",backup)
+    backup.send_keys(Keys.ENTER)
+    state=WebDriverWait(browser, 75).until(lambda d: d.execute_script("""
+      if(window.qaExport.stage!=='armed')return ['complete','read_error','unknown_url'].includes(window.qaExport.stage) && window.qaExport.stage;
+      return /Не удалось создать|Could not create/.test(document.querySelector('#storage-status').textContent) && 'game_error';
+    """))
+    assert state=='complete',state
     return base64.b64decode(browser.execute_script("return window.testBackup"))
 
 
@@ -122,6 +145,7 @@ def diagnostics(browser, report, output):
           const input=document.getElementById('import-file'), s=JSON.parse(AISimsWeb.getStatus());
           return {status:document.getElementById('storage-status').textContent, hasFileInput:!!input,
             files:input?.files?.length, fileEvents:window.qaFileEvents || [],
+            export:window.qaExport || null, viewport:[innerWidth,innerHeight,screen.availWidth,screen.availHeight],
             operation:document.getElementById('storage-status').dataset.operation || '',
             failure:document.getElementById('storage-status').dataset.failure || '',
             storageError:s.storage_error, lease:s.lease, saveRevision:s.save_revision,
@@ -186,6 +210,36 @@ def play_map(browser, name, index, output, report):
     return data, manifest
 
 
+def persisted_photos(browser, manifest):
+    """Read hashes from Godot's actual IDBFS files, independent of its live in-memory archive."""
+    expected=[item["hash"] for item in manifest["media"]]
+    assert expected, "No original photos"
+    actual=browser.execute_async_script("""
+      const ids=arguments[0],done=arguments[arguments.length-1];
+      const request=req=>new Promise((resolve,reject)=>{
+        req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
+      });
+      (async()=>{
+        const opening=indexedDB.open('/userfs');
+        opening.onupgradeneeded=()=>opening.transaction.abort();
+        const db=await request(opening);
+        try {
+          const files=()=>db.transaction('FILE_DATA','readonly').objectStore('FILE_DATA');
+          const keys=await request(files().getAllKeys());
+          return await Promise.all(ids.map(async id=>{
+            const path=keys.find(key=>typeof key==='string' && key.endsWith('/ai_media/'+id+'.png'));
+            if(!path)return 'missing';
+            const {contents}=await request(files().get(path));
+            const hash=await crypto.subtle.digest('SHA-256',contents);
+            return Array.from(new Uint8Array(hash),x=>x.toString(16).padStart(2,'0')).join('');
+          }));
+        } finally {db.close();}
+      })().then(done,e=>done({error:e.name}));
+    """,expected)
+    assert actual==expected, "Restored IDBFS photograph bytes differ"
+    return len(actual)
+
+
 def restore_driver(args, archive, manifest, report):
     browser = visit(args.url)
     try:
@@ -208,16 +262,27 @@ def restore_driver(args, archive, manifest, report):
           return failure || (operation==='complete' && operation);
         """))
         assert operation == "complete", operation
-        assert browser.execute_script("return AISimsWeb.getSlot('slot_3.json')") == manifest["slots"]["slot_3.json"]
-        saved_world, restored = validate_copy(export_copy(browser))
-        assert restored["media"] == manifest["media"]
+        slot=manifest["slots"]["slot_3.json"]
+        assert browser.execute_script("return AISimsWeb.getSlot('slot_3.json')") == slot
+        report["disk_file_import"]=True
+        report["stage"]="verify durable photographs"
+        report["durable_photo_checksums"]=persisted_photos(browser,manifest)
         report["fresh_profile_restores_original_media"] = True
+        report["stage"]="reload restored slot"
+        browser.refresh()
+        wait_for_game(browser)
+        assert browser.execute_script("return AISimsWeb.getSlot('slot_3.json')")==slot
+        report["reload_preserved"]=True
         report["stage"] = "reopen live story"
         tap(browser, 1090, 103)
         time.sleep(2)
-        resumed, _ = validate_copy(export_copy(browser))
+        report["stage"]="download resumed story"
+        resumed, restored = validate_copy(export_copy(browser))
+        saved_world=json.loads(json.loads(slot)["payload"])["data"]["world"]["world"]
         assert resumed["run_id"] > saved_world["run_id"]
         assert resumed["map_id"] == saved_world["map_id"] and resumed["tick"] == saved_world["tick"]
+        assert sorted(item["hash"] for item in restored["media"])==sorted(item["hash"] for item in manifest["media"])
+        report["photos_survived_reload"]=True
         report["loaded_into_live_world"] = True
     except Exception:
         diagnostics(browser,report,args.output)
@@ -232,7 +297,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://localhost:8732/")
     parser.add_argument("--output", type=Path, default=Path("test-output/beta-browser-safari"))
-    parser.add_argument("--export-dir",type=Path,default=Path("build/web"))
     args = parser.parse_args()
     if platform.system() != "Darwin":
         raise SystemExit("Apple Safari and its driver require macOS.")
@@ -262,29 +326,13 @@ def main():
     finally:
         browser.quit()
     try:
-        with tempfile.TemporaryDirectory(prefix="ai-sims-picker-",dir="/private/tmp") as directory:
+        # safaridriver grants read access to real files inside Safari's sandbox.
+        container=Path.home()/"Library/Containers/com.apple.Safari/Data/tmp"
+        with tempfile.TemporaryDirectory(prefix="ai-sims-",dir=container) as directory:
             archive = Path(directory) / "Safari.aisims"
             archive.write_bytes(data)
-            report["stage"] = "native file chooser"
-            try:
-                restore_native(args.export_dir,archive,manifest,report)
-            except (OSError,RuntimeError,subprocess.TimeoutExpired) as error:
-                safe = str(error)
-                report["native_picker_failure"] = safe if safe.replace("_","").isalnum() and len(safe)<64 else type(error).__name__
-                # Use a real input event and real disk file in Safari's own process
-                # container on runners that cannot operate the macOS Open dialog.
-                container = Path.home()/"Library/Containers/com.apple.Safari/Data/tmp"
-                if not container.is_dir():
-                    raise RuntimeError("Safari container temporary directory unavailable") from error
-                with tempfile.TemporaryDirectory(prefix="ai-sims-",dir=container) as safari_tmp:
-                    selected = Path(safari_tmp)/archive.name
-                    shutil.copyfile(archive,selected)
-                    report["import_method"] = "safaridriver_container_file"
-                    restore_driver(args,selected,manifest,report)
-            else:
-                report["import_method"] = "ordinary_safari_system_picker"
-                report["fresh_profile_restores_original_media"] = True
-                report["loaded_into_live_world"] = True
+            report["import_method"] = "safaridriver_container_file"
+            restore_driver(args,archive,manifest,report)
     finally:
         (args.output/"safari.json").write_text(json.dumps(report,indent=2),encoding="utf-8")
     # Import is tested first. Start each subsequent world in its own genuine

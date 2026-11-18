@@ -1,6 +1,6 @@
 {
   "version": "0.3.0-beta.1",
-  "date": "2026-11-17",
+  "date": "2026-11-18",
   "host": {
     "os": "Windows",
     "gpu": "RTX 4080 SUPER",
@@ -100,18 +100,24 @@
       "scenarios": [
         {
           "map": "closed_block",
-          "events": 18,
-          "images": 8
+          "events": 20,
+          "images": 8,
+          "compositor": true,
+          "ci_run": 44183952620
         },
         {
           "map": "residence",
-          "events": 29,
-          "images": 8
+          "events": 23,
+          "images": 8,
+          "compositor": true,
+          "ci_run": 44184982866
         },
         {
           "map": "research_station",
-          "events": 29,
-          "images": 8
+          "events": 25,
+          "images": 8,
+          "compositor": true,
+          "ci_run": 44184982866
         }
       ],
       "browser": "Safari",
@@ -130,7 +136,13 @@
       "reload_preserved": true,
       "photos_survived_reload": true,
       "loaded_into_live_world": true,
-      "restore_ci": "https://github.com/AdamCage/ai-sims/actions/runs/44183952620"
+      "restore_ci": "https://github.com/AdamCage/ai-sims/actions/runs/44183952620",
+      "acceptance_ci": "https://github.com/AdamCage/ai-sims/actions/runs/44184982866",
+      "acceptance_jobs": {
+        "closed_block": "cancelled_no_hosted_runner",
+        "residence": "success",
+        "research_station": "success"
+      }
     },
     "chrome": {
       "browser": "chrome",

@@ -8,6 +8,9 @@ run/main_scene="res://scenes/release.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://assets/icon.svg"
 
+[autoload]
+_mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
+
 [display]
 window/size/viewport_width=1440
 window/size/viewport_height=940
@@ -15,6 +18,9 @@ window/size/window_width_override=1440
 window/size/window_height_override=940
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+
+[editor_plugins]
+enabled=PackedStringArray("res://addons/godot_ai/plugin.cfg")
 
 [rendering]
 renderer/rendering_method="gl_compatibility"

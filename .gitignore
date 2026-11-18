@@ -3,6 +3,7 @@
 
 # Godot import/cache and local execution artifacts.
 .godot/
+__pycache__/
 *.tmp
 *.log
 /build/

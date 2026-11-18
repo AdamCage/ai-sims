@@ -1,0 +1,351 @@
+{
+  "version": "0.3.0-beta.1",
+  "date": "2026-11-17",
+  "host": {
+    "os": "Windows",
+    "gpu": "RTX 4080 SUPER",
+    "ram_gib": 64
+  },
+  "offline_suites": {
+    "simulation": 324,
+    "ai": 415,
+    "storage": 15,
+    "integration": 26820,
+    "independent_qa": 88,
+    "failures": 0
+  },
+  "physical_episode_tests": {
+    "populations": [
+      3,
+      8,
+      20
+    ],
+    "successful_playthroughs": 9,
+    "episode_assertions": 496
+  },
+  "renderer_integration": {
+    "ui_checks": 88,
+    "main_binding_checks": 14,
+    "failures": 0,
+    "hud_checks": 34,
+    "camera_pixel_checks": 111
+  },
+  "real_vlm_native": {
+    "wall_seconds": 276.097,
+    "agents_per_map": 8,
+    "maps": [
+      {
+        "map_id": "closed_block",
+        "calls": 20,
+        "moved_agents": 5,
+        "blocked_agents": 4,
+        "clock_advanced_while_waiting": true,
+        "save_loadable": true,
+        "journal_restores_tick": true
+      },
+      {
+        "map_id": "residence",
+        "calls": 22,
+        "moved_agents": 8,
+        "blocked_agents": 0,
+        "clock_advanced_while_waiting": true,
+        "save_loadable": true,
+        "journal_restores_tick": true
+      },
+      {
+        "map_id": "research_station",
+        "calls": 21,
+        "moved_agents": 6,
+        "blocked_agents": 1,
+        "clock_advanced_while_waiting": true,
+        "save_loadable": true,
+        "journal_restores_tick": true
+      }
+    ]
+  },
+  "real_vlm_chrome": {
+    "credential": "local vault seeded into in-memory browser connection",
+    "requests": 2,
+    "receipts_rub": [
+      0.055576,
+      0.056125
+    ],
+    "first_event": {
+      "type": "move_to",
+      "ok": false
+    },
+    "second_events": [
+      {
+        "type": "move_to",
+        "ok": true
+      }
+    ],
+    "second_proposed_actions": [
+      "move_to",
+      "speak"
+    ],
+    "http_status": 200,
+    "genuine_personal_png": true
+  },
+  "shared_development_budget_rub": {
+    "limit": 1000.0,
+    "confirmed": 483.163775,
+    "unknown": 28.907327,
+    "active_reserved": 0.0,
+    "remaining": 487.928898
+  },
+  "phased_browser_tests": {
+    "Safari": {
+      "platform": "macOS-15.8.2-arm64-arm-64bit",
+      "scenarios": [
+        {
+          "map": "closed_block",
+          "events": 18,
+          "images": 8
+        },
+        {
+          "map": "residence",
+          "events": 29,
+          "images": 8
+        },
+        {
+          "map": "research_station",
+          "events": 29,
+          "images": 8
+        }
+      ],
+      "browser": "Safari",
+      "version": "27.2",
+      "display": {
+        "native_mac_compositor": true,
+        "menu_color_bins": 395,
+        "setup_color_bins": 98,
+        "setup_changed_fraction": 0.952,
+        "presentation": "actual Godot framebuffer via Canvas 2D, up to 30 Hz"
+      },
+      "import_method": "safaridriver_container_file",
+      "disk_file_import": true,
+      "durable_photo_checksums": 8,
+      "fresh_profile_restores_original_media": true,
+      "reload_preserved": true,
+      "photos_survived_reload": true,
+      "loaded_into_live_world": true,
+      "restore_ci": "https://github.com/AdamCage/ai-sims/actions/runs/44183952620"
+    },
+    "chrome": {
+      "browser": "chrome",
+      "version": "157.0.8103.79",
+      "cold_start_ms": 34618,
+      "second_tab_blocked": true,
+      "reload_preserved": true,
+      "fresh_profile_import": true,
+      "invalid_import_preserved": true,
+      "photos_survived_reload": true,
+      "loaded_into_live_world": true,
+      "full_storage_rescue_copy": true,
+      "passed": true,
+      "scenarios": [
+        {
+          "map": "closed_block",
+          "actors": 8,
+          "events": 21,
+          "images": 8,
+          "backup_bytes": 1656704,
+          "canvas": [
+            1440,
+            900
+          ]
+        },
+        {
+          "map": "residence",
+          "actors": 8,
+          "events": 29,
+          "images": 8,
+          "backup_bytes": 1952741,
+          "canvas": [
+            1440,
+            900
+          ]
+        },
+        {
+          "map": "research_station",
+          "actors": 8,
+          "events": 29,
+          "images": 8,
+          "backup_bytes": 1669062,
+          "canvas": [
+            1440,
+            900
+          ]
+        }
+      ]
+    },
+    "firefox": {
+      "browser": "firefox",
+      "version": "146.0.1",
+      "cold_start_ms": 31412,
+      "second_tab_blocked": true,
+      "reload_preserved": true,
+      "fresh_profile_import": true,
+      "invalid_import_preserved": true,
+      "photos_survived_reload": true,
+      "loaded_into_live_world": true,
+      "full_storage_rescue_copy": true,
+      "passed": true,
+      "scenarios": [
+        {
+          "map": "closed_block",
+          "actors": 8,
+          "events": 25,
+          "images": 8,
+          "backup_bytes": 1671118,
+          "canvas": [
+            1440,
+            900
+          ]
+        },
+        {
+          "map": "residence",
+          "actors": 8,
+          "events": 28,
+          "images": 8,
+          "backup_bytes": 1940084,
+          "canvas": [
+            1440,
+            900
+          ]
+        },
+        {
+          "map": "research_station",
+          "actors": 8,
+          "events": 28,
+          "images": 8,
+          "backup_bytes": 1662582,
+          "canvas": [
+            1440,
+            900
+          ]
+        }
+      ]
+    },
+    "msedge": {
+      "browser": "msedge",
+      "version": "157.0.4341.60",
+      "cold_start_ms": 34597,
+      "second_tab_blocked": true,
+      "reload_preserved": true,
+      "fresh_profile_import": true,
+      "invalid_import_preserved": true,
+      "photos_survived_reload": true,
+      "loaded_into_live_world": true,
+      "full_storage_rescue_copy": true,
+      "passed": true,
+      "scenarios": [
+        {
+          "map": "closed_block",
+          "actors": 20,
+          "events": 20,
+          "images": 19,
+          "backup_bytes": 3913248,
+          "canvas": [
+            1440,
+            900
+          ]
+        },
+        {
+          "map": "residence",
+          "actors": 20,
+          "events": 60,
+          "images": 20,
+          "backup_bytes": 5031803,
+          "canvas": [
+            1440,
+            900
+          ]
+        },
+        {
+          "map": "research_station",
+          "actors": 20,
+          "events": 63,
+          "images": 20,
+          "backup_bytes": 4106543,
+          "canvas": [
+            1440,
+            900
+          ]
+        }
+      ]
+    }
+  },
+  "usability": {
+    "assigned_testers": 1,
+    "participant": "project owner",
+    "result": "awaiting first playthrough"
+  },
+  "minimum_hardware": {
+    "target": "16 GiB RAM with GTX 1650 4 GiB",
+    "result": "not measured on target hardware"
+  },
+  "complete_browser_day": "beta-browser-story-soak.json",
+  "full_hd_stress": {
+    "browser": "chrome",
+    "version": "157.0.8103.79",
+    "core": "core-0f073b7ed3101576.pck.bin",
+    "quality": "medium",
+    "warmup_seconds": 6,
+    "map": "residence",
+    "actors": 20,
+    "canvas": [
+      1920,
+      1080
+    ],
+    "elapsed_game_minutes": 30.8500000000003,
+    "duration_ms": 60037,
+    "animation_fps": 38,
+    "events": 453,
+    "images": 34,
+    "backup_bytes": 10644329,
+    "round_trip_passed": true
+  },
+  "packages": {
+    "web": {
+      "sha256": "0882e6f2f0e0def91ed99920d901260d3deed045e2e8b1a3aa4fb892b362d4cc",
+      "size": 39652411,
+      "zip_crc_valid": true,
+      "distributed_core": "core-41c0419bef43e6e3.pck.bin",
+      "runtime": "2f1e0ed57c7061bc",
+      "owner_only_host": true,
+      "chrome_portable_restore": {
+        "original": 10644329,
+        "restored": 10655487,
+        "map": "residence",
+        "tick": 617,
+        "run_before": 3,
+        "run_after": 4,
+        "images": 34,
+        "identical_images": true,
+        "replay_before": 617,
+        "replay_after": 618
+      }
+    },
+    "windows": {
+      "archive_sha256": "3881a2f4149631b8a537bc523769835b1a67e1db01cc2eca3c558d229fc43c66",
+      "version": "0.3.0-beta.1",
+      "archive_integrity": "passed",
+      "pck_entries": 248,
+      "manifest_resource_references": 46,
+      "packed_credential_helper": "passed",
+      "startup": "passed",
+      "offline_tests": "passed",
+      "png_encoder_tests": "passed"
+    }
+  },
+  "web_unit_checks": 34,
+  "chromium_camera_decode": {
+    "pixel_bytes": 921600,
+    "samples": 12,
+    "javascript_decode_ms_per_image": 30.33,
+    "typed_array_decode_ms_per_image": 0.24,
+    "byte_mismatches": 0
+  }
+}

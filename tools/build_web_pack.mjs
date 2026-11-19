@@ -5,6 +5,7 @@ import {gzipSync} from 'node:zlib';
 import {fileURLToPath} from 'node:url';
 
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+const mapAsset = /^assets\/(?:alpha|release)\/maps\/(closed_block|residence|research_station)\//;
 export function readPack(bytes) {
   if (bytes.readUInt32LE(0) !== 0x43504447) throw new Error('Invalid PCK');
   const version=bytes.readUInt32LE(4), flags=bytes.readUInt32LE(20);
@@ -28,8 +29,8 @@ export function makePack(files) {
 }
 async function build(packPath,out,mapDirectory,version='0.3.0-alpha') {
   const files=readPack(await readFile(packPath)); const groups={core:[],shared:[],closed_block:[],residence:[],research_station:[]}; const mapped=new Map();
-  for(const file of files){const match=file.name.match(/^assets\/alpha\/maps\/(closed_block|residence|research_station)\//);if(match && /\.(import|remap)$/.test(file.name))for(const found of file.data.toString('utf8').matchAll(/path(?:\.[\w]+)?="res:\/\/([^"\r\n]+)"/g))mapped.set(found[1],match[1]);}
-  for(const file of files){let group=mapped.get(file.name);const match=file.name.match(/^assets\/alpha\/maps\/(closed_block|residence|research_station)\//);if(match)group=match[1];if(!group)group=/^(\.godot\/imported\/|assets\/release\/(characters|props|textures|audio)\/|assets\/alpha\/)/.test(file.name)?'shared':'core';groups[group].push(file);}
+  for(const file of files){const match=file.name.match(mapAsset);if(match && /\.(import|remap)$/.test(file.name))for(const found of file.data.toString('utf8').matchAll(/path(?:\.[\w]+)?="res:\/\/([^"\r\n]+)"/g))mapped.set(found[1],match[1]);}
+  for(const file of files){let group=mapped.get(file.name);const match=file.name.match(mapAsset);if(match)group=match[1];if(!group)group=/^(\.godot\/imported\/|assets\/release\/(characters|props|textures|audio)\/|assets\/alpha\/)/.test(file.name)?'shared':'core';groups[group].push(file);}
   const manifest={schema:1,version,engine:'4.7.2',threaded:false,maps:{},created_utc:new Date().toISOString()};
   for(const id of ['closed_block','residence','research_station'])groups[id].push({name:`web_maps/${id}.json`,data:await readFile(join(mapDirectory,id+'.json'))});
   for(const [id,entries] of Object.entries(groups)){

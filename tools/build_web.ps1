@@ -29,6 +29,12 @@ Reset-WebDirectory $mapRoot
 foreach($name in @('project.godot','export_presets.cfg','scripts','scenes','assets','web')){Copy-Item -LiteralPath (Join-Path $projectRoot $name) -Destination (Join-Path $sourceRoot $name) -Recurse -Force}
 $webSettingsPath=Join-Path $sourceRoot 'project.godot'
 $webSettings=[IO.File]::ReadAllText($webSettingsPath).Replace('run/main_scene="res://scenes/release.tscn"','run/main_scene="res://scenes/web_boot.tscn"')
+$webSettings=$webSettings.Replace('"Forward Plus"','"GL Compatibility"')
+$webSettings=$webSettings -replace '(?m)^renderer/rendering_method=[^\r\n]*\r?\n',''
+$webSettings=$webSettings.Replace('[rendering]',"[rendering]`nrenderer/rendering_method=`"gl_compatibility`"")
+# The clean web export does not include the editor's MCP plugin or capture helper.
+$webSettings=$webSettings -replace '(?m)^_mcp_game_helper=.*\r?\n',''
+$webSettings=$webSettings -replace '(?m)^enabled=PackedStringArray\("res://addons/godot_ai/plugin\.cfg"\)\r?\n',''
 [IO.File]::WriteAllText($webSettingsPath,$webSettings,[Text.UTF8Encoding]::new($false))
 New-Item -ItemType Directory -Path (Join-Path $sourceRoot 'tools') -Force|Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'build_web_maps.gd') -Destination (Join-Path $sourceRoot 'tools\build_web_maps.gd')
@@ -51,7 +57,7 @@ if($LASTEXITCODE-ne 0){throw 'Web pack split failed'}
 [IO.File]::WriteAllText((Join-Path $outputRoot '_headers'),"/*.bin`n  Cache-Control: public, max-age=31536000, immutable`n/runtime/*`n  Cache-Control: public, max-age=31536000, immutable`n/content-manifest.json`n  Cache-Control: no-cache`n/index.html`n  Cache-Control: no-cache`n",[Text.UTF8Encoding]::new($false))
 & (Join-Path $PSScriptRoot 'copy_game_notices.ps1') -DestinationRoot $outputRoot
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs/BETA_TEST.md') -Destination (Join-Path $outputRoot 'PLAYTEST.md')
-[IO.File]::WriteAllText((Join-Path $outputRoot 'credits.txt'),"AI Sims $Version — Godot 4.7.2 (MIT), Quaternius and Kenney (CC0). Full notices are in LICENSES/. File origins and hashes are in asset-manifest.json.",[Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $outputRoot 'credits.txt'),"AI Sims $Version — Godot 4.7.2 (MIT). Full engine, art and font notices are in LICENSES/. File origins and hashes are in asset-manifest.json.",[Text.UTF8Encoding]::new($false))
 $previousRoot=Join-Path $buildRoot 'web-previous'
 if(Test-Path -LiteralPath $previousRoot){
   $checked=[IO.Path]::GetFullPath($previousRoot)

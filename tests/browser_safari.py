@@ -2,7 +2,7 @@
 
     safaridriver --enable
     python3 -m venv /tmp/ai-sims-safari
-    /tmp/ai-sims-safari/bin/pip install selenium
+    /tmp/ai-sims-safari/bin/pip install selenium pillow
     /tmp/ai-sims-safari/bin/python tests/browser_safari.py --url http://localhost:8732/
 
 """
@@ -16,8 +16,10 @@ import struct
 import subprocess
 import tempfile
 import time
+from io import BytesIO
 from pathlib import Path
 
+from PIL import Image
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.actions.action_builder import ActionBuilder
@@ -59,6 +61,43 @@ def tap(browser, x, y):
     actions.pointer_action.move_to_location(*position)
     actions.pointer_action.click()
     actions.perform()
+
+
+def tap_story_action(browser, action, hero=False):
+    """Wait for the amber primary action in the hero or story popup."""
+    pointer = ActionBuilder(browser)
+    pointer.pointer_action.move_to_location(8, 160)
+    pointer.perform()
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        x, y, width, height, page_width, page_height = browser.execute_script("""
+            const box = document.getElementById('canvas').getBoundingClientRect();
+            return [box.x, box.y, box.width, box.height, innerWidth, innerHeight];
+        """)
+        with Image.open(BytesIO(browser.get_screenshot_as_png())) as screenshot:
+            frame = screenshot.convert("RGB")
+        sx, sy = frame.width / page_width, frame.height / page_height
+        markers = (48, 51, 230, 233) if hero else (420, 520, 915, 1010)
+        columns = [round((x + width * column / 1440) * sx) for column in markers]
+        run = 0
+        for row in range(400 if hero else 200, 800):
+            pixel_y = round((y + height * (row - 46) / 900) * sy)
+            amber = all(
+                all(abs(actual - expected) < 10 for actual, expected in
+                    zip(frame.getpixel((column, pixel_y)), (228, 183, 117)))
+                for column in columns
+            )
+            run = run + 1 if amber else 0
+            if run == 18:
+                tap(browser, 143 if hero else 720, row - 5)
+                return
+        time.sleep(.2)
+    raise AssertionError(f"{action} action did not appear")
+
+
+def select_story(browser, index):
+    tap(browser, (264, 720, 1176)[index], 885)
+    tap_story_action(browser, "Open story", hero=True)
 
 
 def export_copy(browser):
@@ -187,13 +226,12 @@ def diagnostics(browser, report, output):
 
 def play_map(browser, name, index, output, report):
     report["stage"] = "play " + name
-    tap(browser, (262, 720, 1168)[index], 850)
-    time.sleep(.5)
-    tap(browser, 720, 611)
-    time.sleep(3)
-    tap(browser, 720, 699)
+    select_story(browser, index)
+    tap_story_action(browser, "Begin story")
+    time.sleep(1)
+    tap_story_action(browser, "Start observing")
     time.sleep(8)
-    tap(browser, 85, 815)
+    tap(browser, 951, 879)
     data = export_copy(browser)
     world, manifest = validate_copy(data)
     assert world["map_id"] == name and world["elapsed_minutes"] > 0
@@ -274,7 +312,7 @@ def restore_driver(args, archive, manifest, report):
         assert browser.execute_script("return AISimsWeb.getSlot('slot_3.json')")==slot
         report["reload_preserved"]=True
         report["stage"] = "reopen live story"
-        tap(browser, 1090, 103)
+        tap(browser, 1142, 102)
         time.sleep(2)
         report["stage"]="download resumed story"
         resumed, restored = validate_copy(export_copy(browser))

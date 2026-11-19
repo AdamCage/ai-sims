@@ -13,6 +13,7 @@ var session_root := SESSION_ROOT
 var session_path := ""
 var sequence := 0
 var _chronicle:Array = []
+var _event_frames: Dictionary = {}
 var checkpoints: Array = []
 var _initial: Dictionary = {}
 var _previous: Dictionary = {}
@@ -32,8 +33,9 @@ func begin(state: Dictionary) -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(session_path))
 	sequence = 0
 	_chronicle.clear()
-	_index_events(0,state.get("events",[]))
+	_event_frames.clear()
 	_initial = state.duplicate(true)
+	_index_events(0,state.get("events",[]))
 	_archive.begin(state)
 	_previous = state.duplicate(true)
 	_previous.erase("events") # Indexed separately and excluded from world patches.
@@ -80,13 +82,40 @@ func _index_events(frame:int, events:Array) -> void:
 	for event in events:
 		if event is Dictionary:
 			_chronicle.append({"frame":frame,"event":event.duplicate(true)})
+			# A legacy slot can start with a tail of events at its final state.
+			# Only the initial session event represents that actual base frame.
+			var initial_event: bool = frame == 0 and event.get("type") == "session_started" and int(_initial.get("tick", -1)) == 0 and events.size() == 1
+			if event.has("seq") and (frame > 0 or initial_event):
+				_event_frames[int(event.seq)] = frame
+
+func frame_for_event(event_sequence: int) -> int:
+	return int(_event_frames.get(event_sequence, -1))
+
+func event_frame_index() -> Dictionary:
+	return _event_frames
+
+func first_replay_event() -> int:
+	if _event_frames.is_empty():
+		return -1
+	return int(_event_frames.keys().front())
 
 func events_through(cursor:int) -> Array:
-	var result:Array=[]
-	for item in _chronicle:
-		if int(item.frame)>cursor:break
-		result.append(item.event)
-	return result.duplicate(true)
+	return events_slice(0,event_count_through(cursor))
+
+func event_count_through(cursor: int) -> int:
+	var low := 0
+	var high := _chronicle.size()
+	while low < high:
+		var middle := (low + high) >> 1
+		if int(_chronicle[middle].frame) <= cursor:low=middle+1
+		else:high=middle
+	return low
+
+func events_slice(first: int, end: int) -> Array:
+	var result: Array = []
+	for index in range(first,end):
+		result.append(_chronicle[index].event.duplicate(true))
+	return result
 
 func _diff(old: Variant, next: Variant, path: Array, output: Array) -> void:
 	if old == next:return

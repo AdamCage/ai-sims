@@ -1,0 +1,16 @@
+Resident faces, skin textures, eyes, brows and hairstyles are adapted from the MakeHuman Community core assets and released under CC0 1.0 Universal.
+
+Basemesh and target shapes: MPFB 2.0.18 (tag v2.0.18, commit d0a32e5).
+https://github.com/makehumancommunity/mpfb2/releases/tag/v2.0.18
+
+System assets: middleage_asian_female and middleage_caucasian_male skins, brown and brownlight eye textures, brows and eyelashes, teeth and tongue, and short02, braid01, short01, long01, bob01 and ponytail01 hair.
+https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html
+
+Expression and articulation targets adapted from the MakeHuman Faceunits 01 and Visemes 02 packs under CC0 1.0 Universal.
+https://static.makehumancommunity.org/assets/assetpacks/faceunits01.html
+https://static.makehumancommunity.org/assets/assetpacks/visemes02.html
+
+Attribution from the source files includes Data Collection AB, Joel Palmius, Jonas Hauquier and other MakeHuman Community contributors. Modifications by AI Sims include fitted and skinned geometry, texture downsampling and color adjustment.
+
+Source licensing: https://static.makehumancommunity.org/about/license.html
+CC0 legal code: https://creativecommons.org/publicdomain/zero/1.0/legalcode

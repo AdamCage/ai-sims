@@ -53,5 +53,37 @@
   "source": "https://quaternius.com/packs/universalbasecharacters.html",
   "animations_source": "https://quaternius.com/packs/universalanimationlibrary.html",
   "license": "CC0-1.0",
-  "modifications": "Original relaxed garments, solid hems, collars, hood, pockets, lapels, shoes, bob and ponytail; softened muscle geometry and normal shading."
+  "modifications": "Original relaxed garments with skinned linings, solid hems, collars, hood, pockets and lapels, low-profile shoe soles, bob and ponytail; softened muscle geometry and normal shading.",
+  "head_source": "https://github.com/makehumancommunity/mpfb2/releases/tag/v2.0.18",
+  "head_materials_source": "https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html",
+  "face_unit_source": "https://static.makehumancommunity.org/assets/assetpacks/faceunits01.html",
+  "viseme_source": "https://static.makehumancommunity.org/assets/assetpacks/visemes02.html",
+  "face_mesh": "ResidentSkin",
+  "eye_bones": [
+    "Eye_L",
+    "Eye_R"
+  ],
+  "face_morphs": [
+    "Identity_1",
+    "Identity_2",
+    "Blink_L",
+    "Blink_R",
+    "Brow_Up",
+    "Brow_Down",
+    "Lids_Up",
+    "Lids_Down",
+    "Concern",
+    "Smile",
+    "Tension",
+    "Jaw_Open",
+    "Viseme_A",
+    "Viseme_E",
+    "Viseme_I",
+    "Viseme_O",
+    "Viseme_U",
+    "Viseme_MBP",
+    "Viseme_FV",
+    "Viseme_SZ"
+  ],
+  "face_modifications": "Subdivided head and facial poses with fitted mouth anatomy, transparent corneal shells, independent eye pivots and directional lid and eyelash morphs. Mesh strands feather the hairline and follow the crown."
 }

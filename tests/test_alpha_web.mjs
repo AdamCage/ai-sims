@@ -5,9 +5,23 @@ import {Worker} from 'node:worker_threads';
 import {encodePNG,crc32} from '../web/png-codec.mjs';
 import {DurableQueue,makeBackup,parseBackup,makeArchive,readArchive,sha256,base64ToBytes,bytesToBase64} from '../web/alpha-core.mjs';
 import {makePack,readPack} from '../tools/build_web_pack.mjs';
+import {canvasBackingSize} from '../web/canvas-size.mjs';
 
 let checks=0;
 function check(value,label){assert.ok(value,label);checks++;console.log('PASS WEB: '+label);}
+for (const [width, height, ratio, expectedWidth, expectedHeight] of [
+  [1920, 1080, 1, 1920, 1080],
+  [1280, 720, 2, 2560, 1440],
+  [1920, 1080, 2, 3840, 2160],
+  [3840, 2160, 1, 3840, 2160],
+  [2560, 1440, 2, 3840, 2160],
+  [1080, 1920, 2, 2160, 3840],
+  [1440.25, 900.5, 1.5, 2160, 1351],
+]) {
+  const backing = canvasBackingSize(width, height, ratio);
+  check(backing.width === expectedWidth && backing.height === expectedHeight,
+    `${width}×${height} CSS pixels at ${ratio} DPR produce ${expectedWidth}×${expectedHeight} output`);
+}
 function decode(png){assert.deepEqual([...png.subarray(0,8)],[137,80,78,71,13,10,26,10]);const source=Buffer.from(png);let p=8,width,height,compressed=[];while(p<source.length){const size=source.readUInt32BE(p),type=source.subarray(p+4,p+8).toString();check(source.readUInt32BE(p+8+size)===crc32(source.subarray(p+4,p+8+size)),'PNG CRC '+type);if(type==='IHDR'){width=source.readUInt32BE(p+8);height=source.readUInt32BE(p+12);}if(type==='IDAT')compressed.push(source.subarray(p+8,p+8+size));p+=size+12;}const raw=inflateSync(Buffer.concat(compressed)),rgba=Buffer.alloc(width*height*4);for(let y=0;y<height;y++){assert.equal(raw[y*(width*4+1)],0);raw.copy(rgba,y*width*4,y*(width*4+1)+1,(y+1)*(width*4+1));}return{width,height,rgba};}
 const pixels=new Uint8Array([255,0,0,255, 0,255,0,127, 0,0,255,1, 42,13,99,0, 255,255,255,255, 0,0,0,255]);
 for(const compress of [true,false]){const png=await encodePNG(pixels,3,2,{compress});const decoded=decode(png);check(decoded.width===3&&decoded.height===2,'asymmetric dimensions preserved');check(Buffer.from(pixels).equals(decoded.rgba),'all RGBA bytes including transparent colour preserved without flip');}

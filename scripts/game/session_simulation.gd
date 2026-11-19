@@ -7,6 +7,7 @@ const Spatial = preload("res://scripts/game/spatial_rules.gd")
 const Actions = preload("res://scripts/game/action_catalog.gd")
 const Society = preload("res://scripts/game/society_rules.gd")
 const Episodes = preload("res://scripts/game/episode_rules.gd")
+const ResidenceSeats = preload("res://scripts/game/residence_seats.gd")
 const REACH := 1.6
 var state: Dictionary = {}
 var _serial := 0
@@ -193,9 +194,11 @@ func _execute(id:String,action:Dictionary,resolved:Dictionary)->Dictionary:
 		"follow_route":return _follow_printed_route(id,str(action.route))
 		"move_to":
 			var target:=_entity(resolved)
-			if resolved.get("_observed",false):return _begin_travel(id,Vector2(float(resolved.position[0]),float(resolved.position[1])),str(resolved.get("id","")))
+			var seat:=ResidenceSeats.anchor(target,state.geometry)
+			var approach:Vector2=seat.get("approach",Vector2.INF)
+			if resolved.get("_observed",false):return _begin_travel(id,Vector2(float(resolved.position[0]),float(resolved.position[1])),str(resolved.get("id","")),false,approach)
 			if target.is_empty():return _result(false,"Цель исчезла.")
-			return _begin_travel(id,Spatial.point(target),str(resolved.id))
+			return _begin_travel(id,Spatial.point(target),str(resolved.id),false,approach)
 		"take":
 			if _hands(actor)==0:return _result(false,"Обе руки сломаны: взять предмет нельзя.")
 			if resolved.is_empty():resolved=_nearest_ref(id,"item")
@@ -260,7 +263,15 @@ func _execute(id:String,action:Dictionary,resolved:Dictionary)->Dictionary:
 			if target.get("kind") in ["chair","sofa"]:
 				for other in state.agents.values():
 					if other.id!=id and other.busy.get("seat","")==target.id:return _result(false,"Это место уже занято.")
+				var seat:=ResidenceSeats.anchor(target,state.geometry)
+				if not seat.is_empty() and not _reach_seat(actor,seat.approach):
+					return _result(false,"Подойдите к сиденью со стороны свободного прохода.")
 				actor.busy={"type":"rest","remaining":10.0,"seat":target.id,"target":target.id}
+				if not seat.is_empty():
+					actor.position=[seat.approach.x,seat.approach.y]
+					actor.heading=seat.heading
+					actor.busy["seat_positioned"]=true
+					return _result(true,"Сел отдохнуть.")
 				return _result(true,"Отдыхает у места для сидения.")
 			if target.get("kind") in ["bed","medicalbed"]:
 				for other in state.agents.values():
@@ -315,7 +326,10 @@ func _execute(id:String,action:Dictionary,resolved:Dictionary)->Dictionary:
 			if adjacent==Vector2.INF:return _result(false,"Рядом нет безопасного места, чтобы опустить пострадавшего.")
 			other.carried_by="";other.busy={};other.position=[adjacent.x,adjacent.y];actor.carrying=""
 			return _result(true,"Пострадавший опущен рядом.")
-		"speak":_speak(id,str(action.text));return _result(true,"Произнесено сообщение вслух.")
+		"speak":
+			var line := str(action.text)
+			var listeners := _speak(id, line)
+			return _result(true,"Произнесено сообщение вслух.",{"text":line,"listeners":listeners})
 	return Society.execute(self,id,action,resolved)
 
 func _read_floor_plan(id:String,board:Dictionary)->void:
@@ -361,12 +375,24 @@ func _planned_route(actor:Dictionary,destination:Vector2,target_id:String,printe
 		if other.id!=actor.id and Spatial.point(actor).distance_to(Spatial.point(other))<3.0 and Spatial.visible(actor,Spatial.point(other),state.geometry):nearby[other.id]=other
 	return Spatial.path(actor,destination,mapped,nearby,"",true)
 
-func _begin_travel(id:String,destination:Vector2,target_id:String,printed:bool=false)->Dictionary:
+func _reach_seat(actor:Dictionary,approach:Vector2)->bool:
+	var position:=Spatial.point(actor)
+	return (position.distance_to(approach)<=0.35
+		and str(actor.carried_by).is_empty() and str(actor.carrying).is_empty()
+		and not (actor.body.left_leg=="broken" and actor.body.right_leg=="broken")
+		and Spatial.walkable(approach,state.geometry,state.agents,str(actor.id))
+		and Spatial.clear_line(position,approach,state.geometry,Spatial.RADIUS)
+		and Spatial.clear_bodies(position,approach,state.agents,str(actor.id)))
+
+func _begin_travel(id:String,destination:Vector2,target_id:String,printed:bool=false,approach:Vector2=Vector2.INF)->Dictionary:
 	var actor:Dictionary=state.agents[id]
 	if actor.body.left_leg=="broken" and actor.body.right_leg=="broken" and _hands(actor)==0:return _result(false,"Все четыре конечности сломаны: самостоятельное перемещение невозможно.")
 	if not str(actor.carried_by).is_empty():return _result(false,"Персонажа уже переносят.")
 	Spatial.learn(actor,state.geometry)
-	var route:Array=_planned_route(actor,destination,target_id,printed)
+	var route:Array=[]
+	if approach.is_finite() and Spatial.walkable(approach,state.geometry,state.agents,id):
+		route=_planned_route(actor,approach,"",printed)
+	if route.is_empty():route=_planned_route(actor,destination,target_id,printed)
 	if route.is_empty():return _result(false,"В известном пространстве нет доступного пути.")
 	if not target_id.is_empty():
 		var previous:=Spatial.point(actor)
@@ -543,20 +569,29 @@ func observe(id:String)->Dictionary:
 			if other.id!=id and str(other.carried_by).is_empty():candidates.append({"category":"agent","id":other.id,"kind":"agent","label":actor.known_people.get(other.id,"Человек в одежде "+str(other.color)),"entity":other})
 		for door in state.geometry.doors:candidates.append({"category":"door","id":door.id,"kind":"door","label":"Открытая дверь" if door.open else ("Запертая дверь" if door.locked else "Закрытая дверь"),"entity":door})
 		for prop in state.geometry.props:candidates.append({"category":"prop","id":prop.id,"kind":prop.kind,"label":prop.get("label",{"terminal":"Терминал пайков","bed":"Кровать","shop":"Магазин","console":"Сетевая консоль","table":"Стол","shelf":"Шкаф","chair":"Стул"}.get(str(prop.kind),str(prop.kind))),"entity":prop})
-		candidates.sort_custom(func(a,b):return Spatial.point(actor).distance_to(Spatial.point(a.entity))<Spatial.point(actor).distance_to(Spatial.point(b.entity)))
+		var body_positions: Dictionary = {}
+		for other in state.agents.values():
+			body_positions[other.id]=Spatial.sight_origin(other,state.geometry)
+		var origin:Vector2=body_positions[id]
 		for candidate in candidates:
-			var location:=Spatial.point(candidate.entity)
-			if not Spatial.visible(actor,location,state.geometry,str(candidate.id)):continue
+			candidate["ground"]=Spatial.point(candidate.entity)
+			candidate["view_position"]=body_positions[candidate.id] if candidate.category=="agent" else candidate.ground
+		candidates.sort_custom(func(a,b):return origin.distance_squared_to(a.view_position)<origin.distance_squared_to(b.view_position))
+		for candidate in candidates:
+			var ground:Vector2=candidate.ground
+			var location:Vector2=candidate.view_position
+			if not Spatial.visible(actor,location,state.geometry,str(candidate.id),16.0,origin):continue
 			# Other standing bodies occlude targets too; observer labels never do.
 			var occluded:=false
 			for other in state.agents.values():
 				if other.id==id or other.id==candidate.id or not other.alive or other.sleeping or not str(other.carried_by).is_empty():continue
-				var closest:=Geometry2D.get_closest_point_to_segment(Spatial.point(other),Spatial.point(actor),location)
-				if closest.distance_to(Spatial.point(other))<0.22 and Spatial.point(actor).distance_to(Spatial.point(other))<Spatial.point(actor).distance_to(location)-0.3:occluded=true;break
+				var body_position:Vector2=body_positions[other.id]
+				var closest:=Geometry2D.get_closest_point_to_segment(body_position,origin,location)
+				if closest.distance_to(body_position)<0.22 and origin.distance_to(body_position)<origin.distance_to(location)-0.3:occluded=true;break
 			if occluded:continue
 			var ref:="v%d"%view.size()
-			reference_map[ref]={"category":candidate.category,"id":candidate.id,"position":[location.x,location.y]}
-			view.append({"ref":ref,"kind":candidate.kind,"label":candidate.label,"distance":snappedf(Spatial.point(actor).distance_to(location),0.01),"bearing":snappedf(Spatial.bearing(actor,location),0.1)})
+			reference_map[ref]={"category":candidate.category,"id":candidate.id,"position":[ground.x,ground.y]}
+			view.append({"ref":ref,"kind":candidate.kind,"label":candidate.label,"distance":snappedf(origin.distance_to(location),0.01),"bearing":snappedf(Spatial.bearing(actor,location,origin),0.1)})
 			targets.append({"ref":ref,"uv":[0.5,0.5]})
 	_refs[id]=reference_map
 	var contacts:Array=[]
@@ -577,7 +612,14 @@ func perception_candidates(id:String)->Array:
 		var link:Dictionary=_refs[id][ref]
 		var entity:Dictionary=_entity(link)
 		if entity.is_empty():continue
-		output.append({"ref":ref,"position":link.position.duplicate(),"height":1.3 if link.category=="agent" else (float(entity.get("height",0.7))*0.6 if link.category in ["door","prop"] else 0.25+float(entity.get("surface_height",0.0)))})
+		var position: Array = link.position.duplicate()
+		var height := 1.3 if link.category=="agent" else (float(entity.get("height",0.7))*0.6 if link.category in ["door","prop"] else 0.25+float(entity.get("surface_height",0.0)))
+		if link.category=="agent":
+			var seat:=ResidenceSeats.occupied(entity,state.geometry)
+			if not seat.is_empty():
+				position=[seat.position.x,seat.position.y]
+				height=seat.height+0.55*float(entity.appearance.get("height",1.0))
+		output.append({"ref":ref,"position":position,"height":height})
 	return output
 
 func _entity(link:Dictionary)->Dictionary:
@@ -655,17 +697,20 @@ func _die(id:String,reason:String)->void:
 	if not str(actor.carried_by).is_empty():state.agents[actor.carried_by].carrying="";actor.carried_by=""
 	_event(id,"death",true,actor.name+": "+reason,{})
 
-func _speak(id:String,text_value:String)->void:
+func _speak(id:String,text_value:String)->Array[String]:
 	var speaker:Dictionary=state.agents[id]
+	var listeners: Array[String] = []
 	for other_id in state.agents:
 		if other_id==id:continue
 		var listener:Dictionary=state.agents[other_id]
 		var distance:=Spatial.point(speaker).distance_to(Spatial.point(listener))
 		if listener.alive and not listener.sleeping and not listener.unconscious and distance<=9.0 and Spatial.clear_line(Spatial.point(speaker),Spatial.point(listener),state.geometry,0.0,"",true):
+			listeners.append(str(other_id))
 			var speech:Dictionary={"speaker":listener.known_people.get(id,"Голос рядом"),"text":text_value,"bearing":Spatial.bearing(listener,Spatial.point(speaker)),"distance":snappedf(distance,0.1),"source":"heard_speech","minute":state.minute}
 			listener.heard.append(speech)
 			personal_experience.emit(str(other_id),{"tick":state.tick,"minute":state.minute,"heard":[speech.duplicate(true)],"personal_results":[]})
 			if listener.heard.size()>12:listener.heard.pop_front()
+	return listeners
 
 func _introduce(id:String,other_id:String)->void:
 	var actor:Dictionary=state.agents[id]
@@ -974,6 +1019,9 @@ func _valid_world(value:Variant)->bool:
 			if actor.body.get(key) not in ["healthy","injured","broken"]:return false
 		if not actor.get("id") is String or actor.id!=id or not actor.get("name") is String or not actor.get("color") is String:return false
 		if not _valid_actor_details(actor,value.agents):return false
+		if actor.busy.has("seat_positioned"):
+			var seat:=ResidenceSeats.occupied(actor,geometry)
+			if seat.is_empty() or Spatial.point(actor).distance_to(seat.approach)>0.02 or absf(angle_difference(deg_to_rad(float(actor.heading)),deg_to_rad(seat.heading)))>0.02:return false
 		for item_id in actor.inventory:
 			if held.has(item_id) or not value.items.has(item_id):return false
 			held[item_id]=id

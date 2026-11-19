@@ -12,9 +12,9 @@ func check(ok:bool,caption:String)->void:
 func frames(count:int=4)->void:
 	for frame in count:await process_frame
 	await RenderingServer.frame_post_draw
-func press_enter()->void:
+func press_key(code: Key)->void:
 	for pressed in [true,false]:
-		var key:=InputEventKey.new();key.keycode=KEY_ENTER;key.pressed=pressed;root.push_input(key,true);await process_frame
+		var key:=InputEventKey.new();key.keycode=code;key.pressed=pressed;root.push_input(key,true);await process_frame
 	await frames(2)
 func click(control:Control)->void:
 	var point:=control.get_global_rect().get_center()
@@ -25,25 +25,43 @@ func click(control:Control)->void:
 func run()->void:
 	root.size=Vector2i(1366,768)
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://test-output/alpha-ui"))
-	var sim=Sim.new();sim.reset("closed_block",8,"episode",11)
+	var sim=Sim.new();sim.reset("residence",8,"episode",11)
 	var state:Dictionary=sim.snapshot()
-	var world=World.new();root.add_child(world);world.setup(state)
+	var world=World.new();root.add_child(world);world.setup(state);world.frame_story_start()
 	var ui=UI.new();root.add_child(ui);ui.setup(world)
 	ui.command.connect(func(name,payload):commands.append({"name":name,"payload":payload}))
 	var info:Dictionary={"selected":"person_00","mode":"demo","connection":{"enabled":false},"settings":{"speed":1},"agent_statuses":{},"decision_states":{}}
-	ui.refresh(state,{},info);ui.show_main_menu(false);ui.refresh(state,{},info);await frames(12)
+	ui.refresh(state,{},info);await frames()
+	check(ui._hero_start.has_focus() and ui._map_choice.get_selected_metadata()=="residence","Menu focuses the primary action and defaults to the residential story")
+	await press_key(KEY_ENTER)
+	check(ui._new_popup.visible and ui._begin_story.has_focus(),"Keyboard opens the setup and focuses its primary action")
+	var command_count := commands.size()
+	await press_key(KEY_N)
+	check(commands.size()==command_count,"Modal blocks world shortcuts")
+	await press_key(KEY_ESCAPE)
+	check(not ui._new_popup.visible and ui._hero_start.has_focus(),"Escape closes setup and returns focus to its opener")
+	ui.show_main_menu(false);ui.refresh(state,{},info);await frames(12)
 	check(ui._action_text({"type":"follow_route"})=="Следует по маршруту","Russian inspector names route following in plain language")
 	check(ui._chapter_popup.visible,"A new episode opens on its chapter introduction")
 	check(ui._portrait_image.texture!=null,"Selected person has a rendered portrait on first refresh")
-	check(ui._drawer.visible,"Selected activity card visible by default")
+	check(ui._resident.visible and not ui._drawer.visible and not ui._map_frame.visible,"Compact resident card keeps inspector and minimap optional")
+	check(not ui._resident_goal.text.is_empty(),"Resident HUD reveals the selected person's current intention or goal")
 	check(ui._live_events.get_child_count()>0,"Persistent chronicle includes actual events")
 	check(ui._count.value==8,"New story defaults to eight people")
 	check(ui._scenario_choice.get_item_metadata(0)=="episode","Canonical episode is default")
 	check(ui._problem.text==str(state.get("scenario_state",{}).get("current_problem","")),"Current problem reflects scenario state")
-	ui._chapter_continue.pressed.emit();await frames()
+	await press_key(KEY_ENTER)
 	check(commands.any(func(entry):return entry.name=="run" and entry.payload.value==true),"Start observing begins simulation from the introduction")
 	check(root.get_texture().get_image().get_size()==Vector2i(1366,768),"1366×768 fills the client with no imposed aspect ratio")
 	root.get_texture().get_image().save_png("res://test-output/alpha-ui/hud_1366_ru.png")
+	await click(ui._person_card)
+	check(ui._drawer.visible,"Resident details open on demand")
+	await press_key(KEY_ESCAPE)
+	check(not ui._drawer.visible and ui._person_card.has_focus(),"Escape closes resident details and restores focus")
+	await click(ui._map_toggle)
+	check(ui._map_frame.visible,"Minimap opens on demand")
+	await click(ui._map_toggle)
+	check(not ui._map_frame.visible,"Minimap closes without changing the camera")
 	var first_event:Button=ui._live_events.get_child(0)
 	first_event.pressed.emit();check(commands.any(func(entry):return entry.name=="focus_event"),"Chronicle event emits focus command")
 	check(ui.selected_agent=="person_00","World events retain the selected person")
@@ -63,7 +81,7 @@ func run()->void:
 	check(ui._central.texture==world.human_viewport.get_texture() and ui._central.texture.get_width()>640,"Human eye camera renders at HUD resolution")
 	root.get_texture().get_image().save_png("res://test-output/alpha-ui/pov_1920_en.png")
 	world.set_first_person(false)
-	for map_id in ["residence","research_station"]:
+	for map_id in ["closed_block","research_station"]:
 		sim.reset(map_id,8,"episode",11);state=sim.snapshot();world.setup(state);ui.refresh(state,{},info);await frames(12)
 		check(ui._chapter_popup.visible and ui._chapter_text.text.contains(state.scenario_state.description_en),"Replaced episode presents its own chapter "+map_id)
 		var map_index:int=ui.MAP_IDS.find(map_id)
@@ -82,14 +100,14 @@ func run()->void:
 	check(ui._journal.text.contains("History marker 000") and ui._older_events.disabled,"Oldest historical events remain reachable")
 	ui._event_search.text="marker 083";ui._event_search.text_changed.emit(ui._event_search.text);await frames()
 	check(ui._journal_page==0 and ui._journal_rows.get_child_count()==1,"Search scans the entire archive and resets pagination")
-	ui._journal_rows.get_child(0).grab_focus();await press_enter()
+	ui._journal_rows.get_child(0).grab_focus();await press_key(KEY_ENTER)
 	check(ui._journal_selection.visible and ui._selection_details.text.contains("Kitchen and dining room") and ui._selection_details.text.contains("History marker 000") and ui._show_event_place.has_focus(),"Keyboard selection exposes event place and earlier cause above the results")
 	await click(ui._show_event_place)
 	check(not ui._journal_panel.visible and commands[-1].name=="focus_event" and commands[-1].payload.position==[11.25,4.5],"Clicking Show location reveals the recorded event coordinates")
 	ui._journal_panel.show();await frames();await click(ui._journal_rows.get_child(0))
 	check(ui._journal_selection.visible and ui._selected_event.seq==83,"Click selects the same historical event without hovering")
 	root.get_texture().get_image().save_png("res://test-output/alpha-ui/chronicle_detail_1920_en.png")
-	await press_enter();check(not ui._journal_panel.visible and commands[-1].name=="focus_event" and commands[-1].payload.seq==83,"Enter opens the recorded place and closes the chronicle")
+	await press_key(KEY_ENTER);check(not ui._journal_panel.visible and commands[-1].name=="focus_event" and commands[-1].payload.seq==83,"Enter opens the recorded place and closes the chronicle")
 	check(ui._retry_decision.visible and ui._mode.text.contains("required") and ui._status.text=="Test pause","AI failures and disconnected credentials are visible")
 	ui._retry_decision.pressed.emit();check(commands.any(func(entry):return entry.name=="retry_agent" and entry.payload.id=="person_00"),"Retry targets only the selected person")
 	ui.show_main_menu(true);check(ui._continue_save.visible,"Startup menu offers a saved story when the autosave exists")

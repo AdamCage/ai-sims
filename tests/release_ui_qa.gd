@@ -34,7 +34,7 @@ func settle()->void:
 
 func find_button(fragment:String)->Button:
 	for node in game.ui._root.find_children("*","Button",true,false):
-		if node is Button and fragment in node.text:
+		if node is Button and (fragment in node.text or fragment == node.accessibility_name):
 			if node.is_visible_in_tree() and node.get_window().visible:return node
 	return null
 
@@ -203,15 +203,16 @@ func run()->void:
 	var paused:float=float(game.simulation.state.minute)
 	game._process(50.0);await frames(2)
 	check(float(game.simulation.state.minute)==paused,"paused time remains frozen")
-	await click(find_button("Шаг"));await settle()
+	await click(game.ui._step);await settle()
 	check(float(game.simulation.state.minute)>paused,"actual Step button advances authoritative time")
-	await click(find_button("Вид"))
+	await click(game.ui._view_control)
 	check(game.world.first_person and game.ui._central.texture==game.world.human_viewport.get_texture() and game.ui._central.texture.get_width()>640,"visible Switch view control displays selected person's actual camera")
-	await click(find_button("Вид"))
+	await click(game.ui._view_control)
 	check(not game.world.first_person and game.ui._central.texture==game.world.observer_texture(),"visible Switch view control returns to world observer camera")
-	await click(find_button("Фокус"))
+	await click(game.ui._follow_control)
 	check(game.world.follow_selected,"visible Follow control tracks selected person")
-	check(game.ui._drawer.visible,"selected person inspector is visible alongside the world")
+	await click(game.ui._person_card)
+	check(game.ui._drawer.visible,"selected person inspector opens on demand alongside the world")
 	await click(find_button("Образ"))
 	check(game.ui._appearance_popup.visible,"actual Appearance button opens editor")
 	check(game.ui._character_preview.texture!=null,"first editor open immediately shows genuine character preview")
@@ -245,6 +246,7 @@ func run()->void:
 	# The restored chapter describes the saved situation before observation resumes.
 	if game.ui._chapter_popup.visible:
 		await click(game.ui._chapter_continue);await click(game.ui._run);await settle()
+	await click(game.ui._person_card)
 	# Exercise an app through its engine-gated launcher.
 	await click(find_button("Телефон"))
 	check(game.ui._phone_popup.visible,"actual Phone button opens personal device")
@@ -330,7 +332,7 @@ func run()->void:
 	check(int(game.simulation.state.run_id)!=capture_run and game.simulation.snapshot()==replacement_snapshot and game.simulation.state.artifacts.is_empty(),"PNG completion from old run cannot attach photos or mutate replacement world")
 	# Actual dialog starts a new 20-person map and invalidates old run replies.
 	var previous_run:int=int(game.simulation.state.run_id)
-	await click(find_button("Меню"))
+	await click(find_button("Меню истории"))
 	await click(find_button("Открыть историю"))
 	check(game.ui._new_popup.visible,"actual New story button opens setup dialog")
 	await choose(game.ui._map_choice,2);game.ui._count.value=20;game.ui._seed.value=991
@@ -341,13 +343,14 @@ func run()->void:
 	check(game.simulation.snapshot()==reset_snapshot,"old-generation decision cannot mutate UI-created replacement world")
 	if game.ui._chapter_popup.visible:
 		await click(game.ui._chapter_continue);await click(game.ui._run);await settle()
-	await click(find_button("Повтор"));await frames(3)
+	await click(game.ui._enter_replay);await frames(3)
 	check(game._reviewing and not game.running,"actual Replay button enters offline journal playback")
+	check(game.ui._replay_strip.visible and root.get_visible_rect().encloses(game.ui._replay_strip.get_global_rect()),"replay timeline and exit controls remain above the bottom margin")
 	check(game.ui._debug.is_empty() and game.ui._info.decision_states.is_empty() and game.ui._info.observations.is_empty(),"replay does not expose future observations, memories or decisions")
 	game._set_running(false)
 	if game.ui._chapter_popup.visible:
 		await click(game.ui._chapter_continue);await click(game.ui._run);await settle()
-	await click(find_button("Опции"))
+	await click(find_button("Настройки"))
 	check(game.ui._settings_popup.visible,"actual Settings button opens preferences")
 	var settings_tabs:TabContainer=game.ui._settings_popup.find_children("*","TabContainer",true,false)[0]
 	var settings_bar:TabBar=settings_tabs.get_tab_bar()

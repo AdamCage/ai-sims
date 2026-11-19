@@ -1,12 +1,19 @@
 extends SceneTree
 ## Independent release pixels/performance. Real renderer, no HTTP or vault.
 ## Run: Godot --path . --script res://tests/release_visual_qa.gd -- --test-profile
+## Timing gate: --performance-only --benchmark --require-60
+## Restrict a run with --qa-map=closed_block or --qa-output=3840x2160.
 const Simulation=preload("res://scripts/game/session_simulation.gd")
 const Spatial=preload("res://scripts/game/spatial_rules.gd")
 const World=preload("res://scripts/release_world/world_view.gd")
 const Main=preload("res://scripts/release_main.gd")
 const Ledger=preload("res://scripts/release_ai/usage_ledger.gd")
 const OUTPUT="res://test-output/release-visual-qa"
+const MAPS := ["closed_block", "residence", "research_station"]
+const OUTPUTS := [Vector2i(1920, 1080), Vector2i(2560, 1440), Vector2i(3840, 2160)]
+const FRAME_BUDGET_MS := 1000.0 / 60.0
+const POPULATION := 20
+const SEED := 83
 var checks:=0
 var failures:Array=[]
 var report:Dictionary={"kind":"release_real_pixels_and_performance","paid_api_calls":0,"maps":[],"performance":[]}
@@ -181,54 +188,201 @@ func isolate_game()->void:
 	for runtime in game.runtimes.values():runtime.configure_provider(game._provider_config())
 	game.repository.begin(game.simulation.snapshot())
 
-func measure(map_id:String,running:bool,seconds:float)->Dictionary:
+func output_pixels() -> Vector2i:
+	# Canvas-item stretching changes the ViewportTexture size metadata. The
+	# native client and captured image use the unscaled physical drawable.
+	return DisplayServer.window_get_size(root.get_window_id())
+
+func dimensions(size: Vector2i) -> Array[int]:
+	return [size.x, size.y]
+
+func output_name(size: Vector2i) -> String:
+	return "%dx%d" % dimensions(size)
+
+func percentile(sorted: PackedFloat64Array, fraction: float) -> float:
+	return sorted[clampi(ceili(sorted.size() * fraction) - 1, 0, sorted.size() - 1)]
+
+func measure(map_id: String, requested: Vector2i, config: Dictionary, iteration: int, running: bool) -> Dictionary:
 	game._set_running(running)
-	var warmup:=Time.get_ticks_usec()+2500000
-	while Time.get_ticks_usec()<warmup:await process_frame
-	var timings:Array=[];var start:=Time.get_ticks_usec();var previous:=start
-	while Time.get_ticks_usec()-start<seconds*1000000.0:
-		await process_frame
-		var now:=Time.get_ticks_usec();timings.append((now-previous)/1000.0);previous=now
-	var elapsed:float=(Time.get_ticks_usec()-start)/1000000.0
+	var warmup_end := Time.get_ticks_usec() + int(config.warmup * 1000000)
+	while Time.get_ticks_usec() < warmup_end:
+		await RenderingServer.frame_post_draw
+	var start := Time.get_ticks_usec()
+	var previous := start
+	var end := start + int(config.seconds * 1000000)
+	var first_tick := int(game.simulation.state.tick)
+	var timings := PackedFloat64Array()
+	var slow := 0
+	var draw_calls := 0
+	var draw_samples := 0
+	while previous < end:
+		await RenderingServer.frame_post_draw
+		var now := Time.get_ticks_usec()
+		var frame_ms := (now - previous) / 1000.0
+		timings.append(frame_ms)
+		if frame_ms > FRAME_BUDGET_MS:
+			slow += 1
+		if timings.size() % 60 == 1:
+			draw_calls += RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)
+			draw_samples += 1
+		previous = now
+	var elapsed := (previous - start) / 1000000.0
+	var ticks := int(game.simulation.state.tick) - first_tick
 	game._set_running(false)
 	timings.sort()
-	var slow:=0
-	for timing in timings:
-		if float(timing)>1000.0/60.0:slow+=1
-	return {"map":map_id,"mode":"offline_demo_running" if running else "paused_presentation_with_animations","agents":20,"quality":"medium","root_pixels":[root.get_texture().get_width(),root.get_texture().get_height()],"observer_pixels":[game.world.observer_viewport.size.x,game.world.observer_viewport.size.y],"vsync":"disabled","max_fps":Engine.max_fps,"wall_seconds":elapsed,"frames":timings.size(),"average_fps":timings.size()/elapsed,"median_frame_ms":timings[timings.size()/2],"p95_frame_ms":timings[mini(timings.size()-1,floori(timings.size()*.95))],"p99_frame_ms":timings[mini(timings.size()-1,floori(timings.size()*.99))],"frames_over_16_67ms_percent":100.0*slow/timings.size(),"logical_minute_at_end":game.simulation.state.minute,"background_paid_acceptance_contention":true}
+	return {
+		"map": map_id, "iteration": iteration, "mode": "offline_demo_running" if running else "paused",
+		"agents": config.population, "seed": SEED, "scenario": config.scenario, "quality": config.quality, "render_scale": config.scale,
+		"requested_pixels": dimensions(requested), "root_pixels": dimensions(output_pixels()),
+		"observer_pixels": dimensions(game.world.observer_viewport.size), "vsync": "disabled", "max_fps": Engine.max_fps,
+		"warmup_seconds": config.warmup, "wall_seconds": elapsed, "frames": timings.size(),
+		"average_fps": timings.size() / elapsed, "median_frame_ms": percentile(timings, 0.5),
+		"p95_frame_ms": percentile(timings, 0.95), "p99_frame_ms": percentile(timings, 0.99),
+		"frames_over_16_67ms_percent": 100.0 * slow / timings.size(), "ticks_advanced": ticks,
+		"mean_draw_calls": float(draw_calls) / draw_samples,
+		"video_memory_bytes": RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_VIDEO_MEM_USED),
+	}
 
-func performance_maps()->void:
-	game=Main.new();root.add_child(game);current_scene=game;await frames(5);isolate_game()
-	check(game.mode=="demo" and game._key.is_empty(),"performance benchmark is offline and never loads credentials")
-	for map_id in ["closed_block","residence","research_station"]:
-		game.new_session({"map_id":map_id,"count":20,"scenario":"sandbox","seed":83})
-		game.settings.quality="medium";game.settings.speed=1.0;game.world.set_quality("medium");game.ui.show_main_menu(false)
-		for running in [false,true]:
-			var result:Dictionary=await measure(map_id,running,8.0)
-			report.performance.append(result);print("PERFORMANCE ",JSON.stringify(result))
-		check(game.world.observer_viewport.size==Vector2i(1920,1080),"benchmark actually renders observer at1080p: "+map_id)
-		await frames(3);root.get_texture().get_image().save_png(OUTPUT.path_join(map_id+"_1080p_hud.png"))
-	var calls:=0
-	for runtime in game.runtimes.values():calls+=int(runtime.debug().live_requests_started)
-	check(calls==0,"benchmark performed zero network model requests")
-	game.queue_free();await frames(3)
+func check_output(size: Vector2i, scale: float) -> bool:
+	var expected := Vector2i((Vector2(size) * scale).round())
+	var description := "%s at %.0f%% world scale" % [output_name(size), scale * 100.0]
+	var actual := output_pixels()
+	var observer: Vector2i = game.world.observer_viewport.size
+	var human: Vector2i = game.world.human_viewport.size
+	var private_eye: Vector2i = game.world.agent_viewports.person_00.size
+	check(actual == size, "client drawable %s requested, %s actual" % [output_name(size), output_name(actual)])
+	check(observer == expected, "observer render target for %s is %s" % [description, output_name(observer)])
+	check(human == expected, "first-person render target for %s is %s" % [description, output_name(human)])
+	check(private_eye == Vector2i(640, 360), "private camera remains 640x360 at " + description)
+	return actual == size and observer == expected and human == expected and private_eye == Vector2i(640, 360)
+
+func save_hud_capture(name: String, size: Vector2i) -> void:
+	var image := root.get_texture().get_image()
+	check(image != null and image.get_size() == size, "captured pixels match " + name)
+	if image != null and not image.is_empty():
+		var colors := {}
+		for y in range(20, image.get_height(), 55):
+			for x in range(20, image.get_width(), 47):
+				colors[image.get_pixel(x, y).to_rgba32()] = true
+		check(colors.size() >= 20, "capture contains rendered content " + name)
+		check(image.save_png(OUTPUT.path_join(name + ".png")) == OK, "saved screenshot " + name)
+
+func output_qa(config: Dictionary, resolution_only: bool) -> void:
+	game = Main.new()
+	root.add_child(game)
+	current_scene = game
+	await frames(5)
+	isolate_game()
+	check(game.mode == "demo" and game._key.is_empty(), "benchmark uses isolated offline demo settings")
+	for size: Vector2i in config.outputs:
+		root.size = size
+		await frames(5)
+		for map_id: String in config.maps:
+			for iteration in range(1, int(config.repeats) + 1):
+				await game.new_session({"map_id": map_id, "count": config.population, "scenario": config.scenario, "seed": SEED})
+				game._on_command("settings", {"quality": config.quality, "render_scale": config.scale, "speed": 1.0})
+				game.ui.show_main_menu(false)
+				if config.scenario == "sandbox":game.world.show_map()
+				await frames(2)
+				game.ui._chapter_popup.hide()
+				await frames(5)
+				if not check_output(size, config.scale):
+					continue
+				if resolution_only:
+					var name := map_id + "_" + output_name(size)
+					save_hud_capture(name + "_observer", size)
+					game._on_command("view", {"first_person": true})
+					await frames(4)
+					check(game.world.human_viewport.render_target_update_mode == SubViewport.UPDATE_ALWAYS, "human view renders " + name)
+					save_hud_capture(name + "_first_person", size)
+					game._on_command("view", {"first_person": false})
+					continue
+				if config.paused:
+					var paused := await measure(map_id, size, config, iteration, false)
+					report.performance.append(paused)
+					print("PERFORMANCE ", JSON.stringify(paused))
+				var result := await measure(map_id, size, config, iteration, true)
+				report.performance.append(result)
+				print("PERFORMANCE ", JSON.stringify(result))
+				check(result.ticks_advanced > 0, "measured active simulation for " + map_id + " at " + output_name(size))
+				if config.require_60:
+					var label := "%s %s pass %d" % [map_id, output_name(size), iteration]
+					check(result.average_fps >= 60.0 and result.p95_frame_ms <= FRAME_BUDGET_MS,
+						"average >=60 FPS and p95 <=16.67ms: " + label)
+					check(result.p99_frame_ms <= 2.0 * FRAME_BUDGET_MS, "p99 <=33.33ms: " + label)
+			var calls := 0
+			for runtime in game.runtimes.values():
+				calls += int(runtime.debug().live_requests_started)
+			check(calls == 0, "zero provider requests for " + map_id)
+	root.size = config.outputs[0]
+	game._on_command("settings", {"render_scale": 0.75})
+	await frames(6)
+	check_output(config.outputs[0], 0.75)
+	game.queue_free()
+	await frames(3)
+
+func qa_config(args: PackedStringArray) -> Dictionary:
+	var long_test := "--benchmark" in args
+	var config := {"maps": MAPS, "outputs": OUTPUTS, "quality": "medium", "scale": 1.0,
+		"population": POPULATION, "scenario": "sandbox",
+		"warmup": 10.0 if long_test else 2.5, "seconds": 60.0 if long_test else 8.0,
+		"repeats": 3 if long_test else 1, "require_60": "--require-60" in args, "paused": "--include-paused" in args}
+	for arg in args:
+		if arg.begins_with("--qa-output="):
+			var name := arg.get_slice("=", 1)
+			config.outputs = OUTPUTS.filter(func(size): return output_name(size) == name)
+		elif arg.begins_with("--qa-map="):
+			var map_id := arg.get_slice("=", 1)
+			config.maps = MAPS.filter(func(candidate): return candidate == map_id)
+		elif arg.begins_with("--qa-quality="):
+			config.quality = arg.get_slice("=", 1)
+		elif arg.begins_with("--qa-scale="):
+			config.scale = arg.get_slice("=", 1).to_float()
+		elif arg.begins_with("--qa-agents="):
+			config.population = arg.get_slice("=", 1).to_int()
+		elif arg.begins_with("--qa-scenario="):
+			config.scenario = arg.get_slice("=", 1)
+	if config.maps.is_empty() or config.outputs.is_empty() or config.quality not in ["low", "medium", "high"] or config.scale < 0.5 or config.scale > 1.0 or config.population < 3 or config.population > 20 or config.scenario not in ["sandbox", "episode"]:
+		return {}
+	return config
 
 func run()->void:
-	if DisplayServer.get_name()=="headless" or "--test-profile" not in OS.get_cmdline_user_args():
+	var args := OS.get_cmdline_user_args()
+	if DisplayServer.get_name()=="headless" or "--test-profile" not in args:
 		printerr("Real renderer plus -- --test-profile required; no game created");quit(2);return
-	root.position=Vector2i(-4000,-2000);root.size=Vector2i(1920,1080);root.content_scale_size=Vector2i(1920,1080)
+	var config := qa_config(args)
+	if config.is_empty():
+		printerr("Use a supported --qa-map and --qa-output, --qa-quality=low|medium|high, and --qa-scale=0.5..1.0")
+		quit(2)
+		return
+	var offscreen := "--onscreen" not in args
+	root.borderless = true
+	if offscreen:
+		root.position = Vector2i(-4000, -2500)
+	root.size = config.outputs[0]
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS,true)
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED);Engine.max_fps=0
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUTPUT))
 	isolation="user://release_visual_qa_"+str(Time.get_ticks_usec())
 	report["started_utc"]=Time.get_datetime_string_from_system(true)
-	report["renderer"]=DisplayServer.get_name();report["gpu"]=RenderingServer.get_video_adapter_name();report["godot"]=Engine.get_version_info().string
-	if "--performance-only" not in OS.get_cmdline_user_args():
-		for map_id in ["closed_block","residence","research_station"]:await pixel_map(map_id)
-	if "--pixels-only" not in OS.get_cmdline_user_args():await performance_maps()
+	report["display_server"] = DisplayServer.get_name()
+	report["renderer"] = RenderingServer.get_current_rendering_method()
+	report["gpu"] = RenderingServer.get_video_adapter_name()
+	report["graphics_api"] = RenderingServer.get_video_adapter_api_version()
+	report["godot"] = Engine.get_version_info().string
+	report["offscreen_window"] = offscreen
+	report["display_pixels"] = dimensions(DisplayServer.screen_get_size())
+	var resolution_only := "--resolution-only" in args
+	if "--performance-only" not in args and not resolution_only:
+		for map_id: String in config.maps:
+			await pixel_map(map_id)
+	if "--pixels-only" not in args:
+		await output_qa(config, resolution_only)
 	report["checks"]=checks;report["failures"]=failures
-	var file_name:="pixels_report.json" if "--pixels-only" in OS.get_cmdline_user_args() else "report.json"
-	if "--performance-only" in OS.get_cmdline_user_args():file_name="performance_report.json"
+	var file_name := "report.json"
+	if "--pixels-only" in args: file_name = "pixels_report.json"
+	if "--performance-only" in args: file_name = "performance_report.json"
+	if resolution_only: file_name = "resolution_report.json"
 	var file:=FileAccess.open(OUTPUT.path_join(file_name),FileAccess.WRITE);file.store_string(JSON.stringify(report,"\t"));file.close()
 	print("INDEPENDENT RELEASE VISUAL QA: ",checks," checks; ",failures.size()," failures")
 	quit(0 if failures.is_empty() else 1)

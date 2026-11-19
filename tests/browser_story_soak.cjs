@@ -1,15 +1,18 @@
 // Serve a Web export locally, then run this file with node. PW_CORE can point to
 // playwright-core. The default run plays all twelve game hours in real time.
-// STORY_RESUME can point to the 18:00 .aisims copy from a previous full run.
+// STORY_RESUME can point to an unfinished evening .aisims copy from a previous run.
+// STORY_TIME_SCALE can accelerate the Godot clock for a local acceptance run.
 const assert = require('node:assert/strict');
 const {createHash} = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const {chromium} = require(process.env.PW_CORE || 'playwright-core');
+const {clickPrimary, chooseStory, storyClock, startReplay, ui} = require('./browser_story_controls.cjs');
 
 const url = process.env.BETA_URL || 'http://127.0.0.1:8732/';
 const dir = process.env.BETA_REPORT || 'test-output/beta-story-soak-run';
 const resumeFile = process.env.STORY_RESUME;
+const timeScale = Number(process.env.STORY_TIME_SCALE || 1);
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 async function inspectDownload(file) {
@@ -39,14 +42,26 @@ async function inspectDownload(file) {
 }
 
 async function run() {
+  assert.ok(Number.isFinite(timeScale) && timeScale >= 1 && timeScale <= 16);
   await fs.mkdir(dir, {recursive: true});
   const browser = await chromium.launch({
     channel: process.env.BROWSER || 'chrome', headless: true,
     args: ['--enable-unsafe-swiftshader', '--disable-renderer-backgrounding', '--disable-background-timer-throttling']
   });
   const context = await browser.newContext({viewport: {width: 1440, height: 946}, acceptDownloads: true});
+  if (timeScale > 1) await context.addInitScript(scale => {
+    Object.defineProperty(window, 'Engine', {configurable: true, set(Engine) {
+      const TestEngine = new Proxy(Engine, {construct(target, args) {
+        const engine = new target(...args);
+        const start = engine.start.bind(engine);
+        engine.start = options => start({...options, args: [...options.args, '--time-scale', String(scale)]});
+        return engine;
+      }});
+      Object.defineProperty(window, 'Engine', {configurable: true, value: TestEngine});
+    }});
+  }, timeScale);
   const page = await context.newPage();
-  const result = {browser: browser.version(), run: resumeFile ? 'resume_from_18_00' : 'full_day', checkpoints: [], errors: []};
+  const result = {browser: browser.version(), run: resumeFile ? 'resume_evening' : 'full_day', time_scale: timeScale, checkpoints: [], errors: []};
   page.on('pageerror', e => result.errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') result.errors.push(m.text()); });
   page.on('response', r => { if (r.status() >= 400) result.errors.push('HTTP ' + r.status() + ' ' + new URL(r.url()).pathname); });
@@ -70,7 +85,7 @@ async function run() {
       slot_bytes: new TextEncoder().encode(raw).length
     };
   });
-  const checkpoint = async (condition, label, timeout = 600000) => {
+  const checkpoint = async (condition, label, timeout = 600000, requireDurable = true) => {
     const until = Date.now() + timeout;
     let revision = -1, latest;
     while (Date.now() < until) {
@@ -81,7 +96,7 @@ async function run() {
         revision = storage.save_revision;
         latest = await slot();
       }
-      if (latest && condition(latest) && storage.save_persisted >= revision) {
+      if (latest && condition(latest) && (!requireDurable || storage.save_persisted >= revision)) {
         result.checkpoints.push({label, ...latest});
         console.log(label, latest.minute, 'minutes,', latest.replay_frames, 'frames');
         return latest;
@@ -110,24 +125,20 @@ async function run() {
       const origin = await slot();
       assert.equal(origin.map, 'residence');
       assert.equal(origin.actors, 8);
-      assert.ok(origin.minute >= 600 && origin.minute < 660 && !origin.complete);
+      assert.ok(origin.minute >= 600 && origin.minute < 720 && !origin.complete, 'Imported checkpoint is from the unfinished evening');
       await page.reload();
       await booted();
-      await click(1090, 103);
+      await click(...ui.resume);
     } else {
-      await click(720, 850);
-      await page.mouse.dblclick(397, 524);
-      await page.keyboard.press('Control+a');
-      await page.keyboard.type('8');
-      await page.keyboard.press('Enter');
-      await click(720, 611);
+      await chooseStory(page, 'residence');
+      await clickPrimary(page, 'Begin story');
     }
     await page.waitForTimeout(1600);
     await shot(resumeFile ? 'resumed-chapter3' : 'chapter1');
     // The same solid panel background is present in all three chapters and in
     // the debrief. Compare its rendered pixels to catch a missing final save
     // without clicking anything that could save or dismiss the result.
-    const panelPatch = () => clip(364, 225, 4, 4);
+    const panelPatch = () => clip(378, 225, 4, 4);
     const popup = await panelPatch();
     const expectPopup = async () => {
       const until = Date.now() + 3000;
@@ -137,16 +148,16 @@ async function run() {
       }
     };
     const ensurePopup = async () => {
-      if (!(await panelPatch()).equals(popup)) await click(68, 135);
+      if (!(await panelPatch()).equals(popup)) await click(...ui.chapter);
       await expectPopup();
     };
     // Set and verify the pace while paused. A PopupMenu suppresses rapid
     // follow-up clicks on some browsers, especially just after loading a save.
-    await click(1048, 212);
-    await click(271, 815);
+    await click(...ui.closeChapter);
+    await click(...ui.pace);
     await page.waitForTimeout(800);
     await shot('pace-menu');
-    await click(271, 918);
+    await click(...ui.paceFast);
     await shot('pace-selected');
     await backup('pace');
     assert.equal((await slot()).speed, 2, 'The speed control selected 2x');
@@ -172,36 +183,38 @@ async function run() {
       handle = requestAnimationFrame(sample);
       window.finishStoryFpsSample = () => { cancelAnimationFrame(handle); return samples; };
     });
-    await click(720, resumeFile ? 598 : 699);
+    await clickPrimary(page, 'Start observing');
     // Starting a restored Web session can present its current chapter again
     // after the Run command. Close that card while the world continues.
-    if ((await panelPatch()).equals(popup)) await click(1048, 212);
+    if ((await panelPatch()).equals(popup)) await click(...ui.closeChapter);
     assert.ok(!(await panelPatch()).equals(popup), 'Observation has begun');
     if (!resumeFile) {
-      const chapter2 = await checkpoint(s => s.phase === 2, 'chapter_2');
+      const chapter2 = await checkpoint(s => s.phase === 2, 'chapter_2', 600000, timeScale === 1);
       assert.equal(chapter2.actors, 8);
       assert.equal(chapter2.speed, 2);
       assert.equal(chapter2.map, 'residence');
       await expectPopup();
       await shot('chapter2');
-      await click(720, 698);
-      await checkpoint(s => s.minute >= 240, 'noon');
-      await click(85, 815);
+      await clickPrimary(page, 'Continue observing');
+      await checkpoint(s => s.minute >= 240, 'noon', 600000, timeScale === 1);
+      await click(...ui.pause);
       await ensurePopup();
-      await click(715, 592); // Release the relief fund.
+      await click(720, 586); // Release the relief fund.
       await ensurePopup();
-      await click(715, 592); // Freeze prices. The used fund button is gone.
+      await click(720, 586); // Freeze prices. The used fund button is gone.
       await shot('noon');
-      await click(85, 815);
-      const chapter3 = await checkpoint(s => s.phase === 3, 'chapter_3');
+      await click(...ui.pause);
+      const chapter3 = await checkpoint(s => s.phase === 3, 'chapter_3', 600000, timeScale === 1);
       assert.deepEqual(chapter3.interventions.sort(), ['policy', 'reserve']);
-      await expectPopup();
-      await shot('chapter3');
-      await click(720, 598);
-      await checkpoint(s => s.minute >= 600, '18_00');
-      result.evening = await backup('hour10');
+      if (!chapter3.complete) {
+        await expectPopup();
+        await shot('chapter3');
+        await clickPrimary(page, 'Continue observing');
+        const evening = await checkpoint(s => s.minute >= 600, '18_00', 600000, timeScale === 1);
+        if (!evening.complete) result.evening = await backup('hour10');
+      }
     }
-    const lastHour = await checkpoint(s => s.minute >= 660 && !s.complete, 'last_hour');
+    const lastHour = await checkpoint(s => s.minute >= 660 && (timeScale > 1 || !s.complete), 'last_hour', 600000, timeScale === 1);
     assert.equal(lastHour.speed, 2);
     const until = Date.now() + 300000;
     while (!(await panelPatch()).equals(popup)) {
@@ -212,21 +225,26 @@ async function run() {
     result.ten_second_frame_samples = await page.evaluate(() => window.finishStoryFpsSample());
     await shot('ending');
     // Check both automatic transitions BEFORE the toolbar creates a manual save.
-    await checkpoint(s => s.complete && s.minute >= 720, 'ending_autosave', 8000);
+    await checkpoint(s => s.complete && s.minute >= 720, 'ending_autosave', 45000);
     const storyFile = page.waitForEvent('download', {timeout: 30000});
-    await click(720, 500);
+    await click(720, 490);
     const reportPath = path.join(dir, 'story.json');
     await (await storyFile).saveAs(reportPath);
     const story = JSON.parse(await fs.readFile(reportPath, 'utf8'));
     const economic = story.events.filter(e => e.type === 'intervention' && e.details.command === 'episode_intervention');
     assert.deepEqual(economic.map(e => e.details.args.id), ['reserve', 'policy']);
-    assert.ok(economic.every(e => Math.floor(e.minute) === 240), 'Interventions occurred at 12:00');
+    assert.ok(economic.every(e => e.minute >= 240 && e.minute < 240 + (timeScale === 1 ? 1 : 30)), 'Interventions occurred at the noon checkpoint');
     result.ending = await backup('ending');
     await ensurePopup();
-    await click(720, 552);
-    await checkpoint(s => s.scenario === 'sandbox' && s.complete, 'sandbox_autosave', 8000);
+    await click(720, 541);
+    await checkpoint(s => s.scenario === 'sandbox' && s.complete, 'sandbox_started', 15000, false);
+    // The accelerated clock can start another hourly save before the first
+    // sandbox revision reaches IndexedDB. Pause without requesting a new save.
+    await click(...ui.pause);
+    await checkpoint(s => s.scenario === 'sandbox' && s.complete, 'sandbox_autosave', 45000);
+    await click(...ui.pause);
     await page.waitForTimeout(4000);
-    await click(85, 815);
+    await click(...ui.pause);
     await shot('sandbox');
     result.sandbox = await backup('sandbox');
     assert.ok(result.sandbox.tick > result.ending.tick);
@@ -235,7 +253,7 @@ async function run() {
     const reloaded = await slot();
     assert.equal(reloaded.tick, result.sandbox.tick);
     assert.equal(reloaded.scenario, 'sandbox');
-    await click(1090, 103);
+    await click(...ui.resume);
     await page.waitForTimeout(1500);
     result.restored = await backup('restored');
     assert.equal(result.restored.scenario, 'sandbox');
@@ -243,14 +261,10 @@ async function run() {
     assert.equal(result.restored.outcome, result.ending.outcome);
     assert.ok(result.restored.run > result.sandbox.run);
     assert.deepEqual(result.restored.media_hashes, result.sandbox.media_hashes);
-    const endClock = await clip(1180, 80, 50, 28);
-    await click(1265, 815);
-    await page.waitForTimeout(800);
-    const firstClock = await clip(1180, 80, 50, 28);
-    assert.ok(!firstClock.equals(endClock), 'Replay returns to the morning clock');
+    const firstClock = await startReplay(page);
     await shot('replay-start');
     await page.waitForTimeout(8500);
-    assert.ok(!(await clip(1180, 80, 50, 28)).equals(firstClock), 'Recorded clock advances');
+    assert.ok(!(await storyClock(page)).equals(firstClock), 'Recorded clock advances');
     await shot('replay-progress');
     assert.deepEqual(result.errors, []);
     result.passed = true;

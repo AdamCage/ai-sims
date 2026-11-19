@@ -101,7 +101,10 @@ def main():
         report["browser"]=browser.capabilities.get("browserName")
         report["version"]=browser.capabilities.get("browserVersion")
         before=capture(browser,args.output,"menu",report,capture_compositor)
-        tap(browser,262,850)
+        # Choose the residential feature already visible in the default hero.
+        # This independent display test verifies OS pixels even if the driver
+        # omits the WebGL layer from a browser screenshot.
+        tap(browser,143,649)
         report["menu_click_sent"]=True
         capture(browser,args.output,"story-options",report,capture_compositor,before)
         menu,options=report["stages"].values()

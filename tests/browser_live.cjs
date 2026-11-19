@@ -4,6 +4,7 @@ const {randomUUID}=require('node:crypto');
 const {mkdir,writeFile}=require('node:fs/promises');
 const path=require('node:path');
 const assert=require('node:assert/strict');
+const {clickPrimary, chooseStory}=require('./browser_story_controls.cjs');
 
 async function main(){
   if(!process.argv.includes('--allow-paid')) throw new Error('Explicit --allow-paid is required');
@@ -65,11 +66,11 @@ async function main(){
     await page.goto('http://127.0.0.1:8732/');
     await page.waitForFunction(()=>document.querySelector('#boot').hidden,null,{timeout:120000});
     assert.equal(await page.evaluate(()=>JSON.parse(AISimsWeb.getStatus()).connected),true);
-    await page.mouse.click(262,850);await page.waitForTimeout(500);
-    await page.mouse.click(720,611);await page.waitForTimeout(1800);
+    await chooseStory(page,'closed_block');
+    await clickPrimary(page,'Begin story');
     // The chapter control starts observation. The route cap applies both to
     // decisions and to any memory jobs for the lifetime of this context.
-    await page.mouse.click(85,815);
+    await clickPrimary(page,'Start observing');
     await page.waitForFunction(()=>Object.values(JSON.parse(AISimsWeb.getLedger()||'{"entries":{}}').entries).some(e=>e.state==='settled'),null,{timeout:120000});
     const entry=await page.evaluate(id=>JSON.parse(AISimsWeb.getLedger()).entries[id],entryId);
     const actor=entryId.split('/')[0];

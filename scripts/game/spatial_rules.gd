@@ -1,4 +1,5 @@
 extends RefCounted
+const ResidenceSeats = preload("res://scripts/game/residence_seats.gd")
 const RADIUS := 0.30
 const CELL := 0.75
 static var _occupancy:Dictionary={}
@@ -7,8 +8,12 @@ static func point(entity: Dictionary) -> Vector2:
 	var p: Array = entity.get("position",entity.get("center",[0.0,0.0]))
 	return Vector2(float(p[0]),float(p[1]))
 
-static func bearing(agent: Dictionary,target: Vector2)->float:
-	var delta := target-point(agent)
+static func sight_origin(agent: Dictionary,geometry: Dictionary)->Vector2:
+	var seat:=ResidenceSeats.occupied(agent,geometry)
+	return seat.get("position",point(agent))
+
+static func bearing(agent: Dictionary,target: Vector2,origin: Vector2=Vector2.INF)->float:
+	var delta := target-(origin if origin.is_finite() else point(agent))
 	return wrapf(rad_to_deg(atan2(-delta.x,-delta.y))-float(agent.heading),-180.0,180.0)
 
 static func intersects(a: Vector2,b: Vector2,box: Dictionary,margin: float=0.0)->bool:
@@ -66,16 +71,17 @@ static func clear_bodies(a:Vector2,b:Vector2,agents:Dictionary,ignore_actor:Stri
 		if Geometry2D.get_closest_point_to_segment(position,a,b).distance_to(position)<RADIUS*2.0-0.001:return false
 	return true
 
-static func visible(agent: Dictionary,location: Vector2,geometry: Dictionary,ignore: String="",max_distance: float=16.0)->bool:
+static func visible(agent: Dictionary,location: Vector2,geometry: Dictionary,ignore: String="",max_distance: float=16.0,origin: Vector2=Vector2.INF)->bool:
 	if agent.body.get("blind",false) or not agent.get("alive",true) or agent.get("sleeping",false) or agent.get("unconscious",false):return false
-	return point(agent).distance_to(location)<=max_distance and absf(bearing(agent,location))<=53.0 and clear_line(point(agent),location,geometry,0.0,ignore,true)
+	if not origin.is_finite():origin=sight_origin(agent,geometry)
+	return origin.distance_to(location)<=max_distance and absf(bearing(agent,location,origin))<=53.0 and clear_line(origin,location,geometry,0.0,ignore,true)
 
 static func cell_key(location: Vector2)->String:
 	return "%d:%d" % [roundi(location.x/CELL),roundi(location.y/CELL)]
 
 static func learn(agent: Dictionary,geometry: Dictionary)->void:
 	if agent.body.blind or agent.sleeping or agent.unconscious:return
-	var origin := point(agent)
+	var origin := sight_origin(agent,geometry)
 	var stamp:="%s:%d:%d"%[cell_key(origin),roundi(float(agent.heading)/12.0),_geometry_key(geometry)]
 	if str(agent.get("_learn_stamp",""))==stamp:return
 	agent["_learn_stamp"]=stamp
@@ -95,7 +101,7 @@ static func learn(agent: Dictionary,geometry: Dictionary)->void:
 			var location:=Vector2(x*CELL,z*CELL)
 			var key:="%d:%d"%[x,z]
 			if known.has(key):continue
-			if visible(agent,location,local_geometry) and walkable(location,local_geometry):known[key]=true
+			if visible(agent,location,local_geometry,"",16.0,origin) and walkable(location,local_geometry):known[key]=true
 	known[cell_key(origin)]=true
 
 static func path(agent: Dictionary,destination: Vector2,geometry: Dictionary,agents: Dictionary,ignore_target: String="",printed:bool=false)->Array:

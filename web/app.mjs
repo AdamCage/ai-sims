@@ -3,6 +3,7 @@ import {DurableQueue, readArchive, makeArchive, referencedImages, base64ToBytes,
 import {installPlaytest} from './playtest.mjs';
 import {installToolbar} from './shell-locale.mjs';
 import {installWebKitPresentation} from './webkit-presentation.mjs';
+import {observeCanvasSize} from './canvas-size.mjs';
 
 const $ = id => document.getElementById(id);
 const commands = [], pngJobs = new Map(), pngResults = new Map(), packJobs = new Map();
@@ -208,14 +209,7 @@ async function boot() {
   engine = new window.Engine({...window.AI_SIMS_ENGINE_CONFIG, canvas:$('canvas'), focusCanvas:true, onProgress:(loaded,total) => { if (total) { $('boot-progress').value = loaded / total; report(`Загружаем мир… ${Math.round(loaded / total * 100)}%`); } }, onPrint:message => console.info(String(message)), onPrintError:message => { console.error(String(message)); if (/indexeddb|quota|persist.*fail|fs.*sync.*fail/i.test(String(message))) storageError = 'Local storage failed. Export a backup before closing.'; }});
   const canvas = $('canvas');
   presentation = installWebKitPresentation(canvas);
-  const resize = () => {
-    const box = canvas.parentElement.getBoundingClientRect();
-    const width = Math.max(1,Math.round(box.width)), height = Math.max(1,Math.round(box.height));
-    if (canvas.width !== width) canvas.width = width;
-    if (canvas.height !== height) canvas.height = height;
-  };
-  resize();
-  new ResizeObserver(resize).observe(canvas.parentElement);
+  observeCanvasSize(canvas);
   report('Загружаем движок…');
   await engine.init(window.AI_SIMS_ENGINE_CONFIG.executable);
   await loadPack(manifest.core, '/packs/core.pck');

@@ -106,7 +106,7 @@ foreach ($directory in @('scripts\game', 'scripts\release_ai', 'scripts\release_
     }
 }
 foreach ($file in Get-ChildItem -LiteralPath (Join-Path $projectRoot 'assets\release') -Recurse -File) {
-    if ($file.Extension -in @('.glb', '.png', '.svg', '.wav', '.json', '.txt', '.import') -or $file.FullName -eq (Join-Path $projectRoot 'assets\release\bin\credential_bridge.exe')) { $files.Add($file) }
+    if ($file.Extension -in @('.glb', '.png', '.jpg', '.webp', '.exr', '.hdr', '.svg', '.wav', '.ttf', '.otf', '.tres', '.tscn', '.uid', '.json', '.txt', '.import') -or $file.FullName -eq (Join-Path $projectRoot 'assets\release\bin\credential_bridge.exe')) { $files.Add($file) }
 }
 foreach ($file in $files | Sort-Object FullName -Unique) {
     $relative = $file.FullName.Substring($projectRoot.Length + 1)
@@ -119,6 +119,8 @@ $preset = [IO.File]::ReadAllText($stagedPreset) -replace 'application/file_versi
 Write-Utf8 $stagedPreset $preset
 $stagedProject = Join-Path $sourceRoot 'project.godot'
 $project = [IO.File]::ReadAllText($stagedProject)
+$project = $project -replace '(?m)^_mcp_game_helper=.*\r?\n',''
+$project = $project -replace '(?ms)^\[editor_plugins\]\r?\n.*?(?=^\[|\z)',''
 $project = $project -replace '(?m)^config/version=.*\r?\n',''
 $project = $project -replace '(?m)^config/name="AI Sims"', ('config/name="AI Sims"' + "`n" + 'config/version="' + $Version + '"')
 Write-Utf8 $stagedProject $project
@@ -144,6 +146,9 @@ AI Sims $Version
 Godot Engine 4.7.2 (MIT), https://godotengine.org/
 Full engine and bundled library notices: LICENSES/Godot-LICENSE.txt and Godot-COPYRIGHT.txt.
 Characters and animation: Quaternius, CC0, https://quaternius.com/
+Character heads, eyes and hair: MakeHuman Community, CC0.
+Residential assets: Poly Haven contributors, CC0.
+Manrope and Literata fonts: SIL Open Font License 1.1.
 Furniture: Kenney, CC0, https://kenney.nl/
 Original tileable textures, clothing assembly and sound effects: AI Sims, CC0.
 Asset provenance and hashes: asset-manifest.json. Detailed asset notices: LICENSES/.
@@ -155,7 +160,7 @@ AI Sims $Version — Windows 10/11 x64
 РУССКИЙ
 Распакуйте весь ZIP в доступную для записи папку и запустите AI-Sims.exe.
 AI-Sims.pck должен оставаться рядом с EXE. Установка Godot, Python и редактора не требуется.
-Для 3D нужен поддерживаемый графическим драйвером режим OpenGL Compatibility.
+Windows-сборка по умолчанию запускает Forward+ через Vulkan. Для совместимого режима запустите AI-Sims.exe --rendering-method gl_compatibility.
 Локальный помощник для Windows Credential Manager использует системный .NET Framework 4.x.
 
 Начните с главного меню: карта, сценарий, число персонажей и новая сессия.
@@ -169,6 +174,7 @@ AI-Sims.pck должен оставаться рядом с EXE. Установ�
 
 ENGLISH
 Extract the complete ZIP and run AI-Sims.exe with AI-Sims.pck alongside it.
+Windows uses Forward+ over Vulkan by default. Run AI-Sims.exe --rendering-method gl_compatibility to use Compatibility.
 No Godot editor or Python installation is needed. The credential helper uses Windows .NET Framework 4.x.
 Choose a map, scenario and population in the main menu. Local demo mode needs no API key.
 Real AI is an explicit RouterAI setting and uses your own paid API account.

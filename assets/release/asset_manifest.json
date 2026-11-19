@@ -60,6 +60,31 @@
       "albedo": "res://assets/release/textures/tile_color.png",
       "normal": "res://assets/release/textures/tile_normal.png",
       "roughness": "res://assets/release/textures/tile_roughness.png"
+    },
+    "concrete_slab": {
+      "albedo": "res://assets/release/textures/concrete_slab_color.png",
+      "normal": "res://assets/release/textures/concrete_slab_normal.png",
+      "roughness": "res://assets/release/textures/concrete_slab_roughness.png"
+    },
+    "courtyard_pavers": {
+      "albedo": "res://assets/release/textures/courtyard_pavers_color.png",
+      "normal": "res://assets/release/textures/courtyard_pavers_normal.png",
+      "roughness": "res://assets/release/textures/courtyard_pavers_roughness.png"
+    },
+    "compacted_gravel": {
+      "albedo": "res://assets/release/textures/compacted_gravel_color.png",
+      "normal": "res://assets/release/textures/compacted_gravel_normal.png",
+      "roughness": "res://assets/release/textures/compacted_gravel_roughness.png"
+    },
+    "painted_brick": {
+      "albedo": "res://assets/release/textures/painted_brick_color.png",
+      "normal": "res://assets/release/textures/painted_brick_normal.png",
+      "roughness": "res://assets/release/textures/painted_brick_roughness.png"
+    },
+    "enamel_panel": {
+      "albedo": "res://assets/release/textures/enamel_panel_color.png",
+      "normal": "res://assets/release/textures/enamel_panel_normal.png",
+      "roughness": "res://assets/release/textures/enamel_panel_roughness.png"
     }
   },
   "sources": [
@@ -74,15 +99,59 @@
       "license": "CC0-1.0"
     },
     {
+      "author": "MakeHuman Community",
+      "url": "https://static.makehumancommunity.org/mpfb/faq/can_i_sell_models.html",
+      "tool_release": "https://github.com/makehumancommunity/mpfb2/releases/tag/v2.0.18",
+      "asset_pack": "https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html",
+      "expression_sources": [
+        "https://static.makehumancommunity.org/assets/assetpacks/faceunits01.html",
+        "https://static.makehumancommunity.org/assets/assetpacks/visemes02.html"
+      ],
+      "license": "CC0-1.0",
+      "description": "MakeHuman geometry, textures, eye and mouth anatomy, facial targets and visemes adapted to the shared AI Sims animation rigs.",
+      "notice": "assets/release/licenses/MakeHuman-Resident-Features.txt"
+    },
+    {
       "author": "Kenney",
       "url": "https://kenney.nl/assets/furniture-kit",
       "mirror": "https://github.com/shorepine/kenney/tree/main/3d/furniture",
       "license": "CC0-1.0"
     },
     {
+      "author": "Poly Haven and asset contributors",
+      "url": "https://polyhaven.com/license",
+      "license": "CC0-1.0",
+      "assets": [
+        "cobblestone_03",
+        "white_stucco",
+        "mixed_brick_wall",
+        "oak_wood_planks",
+        "tree_small_02",
+        "painted_wooden_bench",
+        "potted_plant_01",
+        "dining_table",
+        "mid_century_lounge_chair",
+        "wooden_display_shelves_01"
+      ],
+      "description": "Materials, foliage and furniture adapted for the residential district."
+    },
+    {
+      "author": "Manrope Project Authors",
+      "url": "https://github.com/google/fonts/tree/5bd87dfc525c8a0d1d8529d3684716e00c3fc59a/ofl/manrope",
+      "license": "OFL-1.1",
+      "asset": "assets/release/ui/manrope.ttf"
+    },
+    {
+      "author": "Literata Project Authors",
+      "url": "https://github.com/google/fonts/tree/5bd87dfc525c8a0d1d8529d3684716e00c3fc59a/ofl/literata",
+      "license": "OFL-1.1",
+      "asset": "assets/release/ui/literata.ttf"
+    },
+    {
       "author": "AI Sims project",
       "url": "tools/build_materials.py",
-      "license": "CC0-1.0"
+      "license": "CC0-1.0",
+      "description": "Original deterministic tileable material library and playable sound cues."
     },
     {
       "author": "AI Sims project",
@@ -92,8 +161,24 @@
     },
     {
       "author": "AI Sims project",
+      "url": "tools/build_residence_architecture.py",
+      "license": "CC0-1.0",
+      "description": "Original Blender architecture, fixture and furniture modules, woven rugs and procedural courtyard PBR maps for Residence.",
+      "assets": [
+        "assets/release/maps/residence/residence_architecture.glb",
+        "assets/release/maps/residence/woven_hall_color.png",
+        "assets/release/maps/residence/courtyard_paver_color.png",
+        "assets/release/maps/residence/courtyard_paver_normal.png",
+        "assets/release/maps/residence/courtyard_paver_roughness.png"
+      ]
+    },
+    {
+      "author": "AI Sims project",
       "url": "assets/release/ui/story_locations.png",
-      "description": "Original, project-generated illustration, composed as a triptych for the story picker."
+      "description": "Three scenario covers in one 2172 x 724 atlas: concrete institutional yard, warm residential market, prefabricated research campus.",
+      "kind": "generated",
+      "tool": "OpenAI ImageGen (built-in)",
+      "prompt": "Use case: stylized-concept. Single panoramic chapter-choice illustration triptych for AI Sims, a grounded social simulation. Three equal-width panels edge to edge, no gaps and no border. Architectural visualization with softly bevelled everyday objects, believable materials and balanced colors, like an art-directed handcrafted 3D environment in realistic stylization. Each panel is independently framed with its main landmark in the middle, clear at thumbnail size. Left panel: concrete institutional enclosure, fenced rectangular common yard, faded petrol-blue metal, ration office with plain service hatch, overcast late morning, amber entry lights. Center panel: dense lived-in residential courtyard with muted terracotta brick and cream plaster, shade awnings, young ornamental trees, open market and a shared path, afternoon sun. Right panel: isolated research station, slate-steel prefabricated three-module campus, pale gravel, ribs, narrow windows, and amber guide markings toward the airlock, cold exterior afternoon light and warm windows. All in the same slightly elevated architectural camera, editorial games art, restrained grain, subtle ambient shadows, grounded material scale and sense of lived-in places. Design as a very wide 3:1 overall triptych, with each landmark composed for a square center crop. No text at all, no signage lettering, no logo, no people, no UI, no watermark, no printed frames, no neon cyberpunk."
     }
   ],
   "files": [
@@ -129,43 +214,78 @@
     },
     {
       "path": "assets/release/characters/human_female.glb",
-      "sha256": "9645bce097907a30b0b55529255ca97320f1a80d2c0ad7b987e3ae7bcfca7e41",
-      "bytes": 13646312
+      "sha256": "bd2cf2859dc8d68174bdcf971bd830bc68043561b2f2717084b98fe9b90388d5",
+      "bytes": 22229000
+    },
+    {
+      "path": "assets/release/characters/human_female_bob01_diffuse.png",
+      "sha256": "0c15e3237a8f12ff44b46ef448e6df17b99f7c424caa095da8bb7e6403513be8",
+      "bytes": 313005
+    },
+    {
+      "path": "assets/release/characters/human_female_braid01_diffuse.png",
+      "sha256": "c1f5684fc6dd7e2ece335f03cecbb271f5f6ab53bdaedd82e0748364e84d36d8",
+      "bytes": 288778
+    },
+    {
+      "path": "assets/release/characters/human_female_brownlight_eye.png",
+      "sha256": "3f43a4de70e446186dac1760cfa01dfe36d530ed7564208455395b0ebcdf788a",
+      "bytes": 680577
+    },
+    {
+      "path": "assets/release/characters/human_female_eyebrow009.png",
+      "sha256": "4d33c85718ca5accf44625652daf0ae6e8cc007ed8138280e4d95601717910c3",
+      "bytes": 230800
+    },
+    {
+      "path": "assets/release/characters/human_female_eyelashes02.png",
+      "sha256": "6375eb8934d86d49eb2a37589e179614fb557dd92a772ced11e269ad6d72d79d",
+      "bytes": 132278
     },
     {
       "path": "assets/release/characters/human_female_fabric_color.png",
-      "sha256": "edda032d92f024a52f06380fcb60c76810af89eb3761f225dd1c871754d8a4e3",
-      "bytes": 207490
+      "sha256": "992bf93e81fb6d3798213649819e5447a01ee172318f8de96f347079ad37b36c",
+      "bytes": 226384
     },
     {
-      "path": "assets/release/characters/human_female_T_Eye_Brown.png",
-      "sha256": "d08e3356a83211bc6ca21fe3a8e39f4b5c1a3b8f85457fc2c0fb57be09935025",
-      "bytes": 35958
+      "path": "assets/release/characters/human_female_long01_diffuse.png",
+      "sha256": "c29ca2be3a12f56eb8eb897823ae75391c78a2a91527080c6a7c4accacfd7c8f",
+      "bytes": 295726
     },
     {
-      "path": "assets/release/characters/human_female_T_Eye_Normal_png.png",
-      "sha256": "9ed61f7726a54fe346a78b9e5a18905d8e2b88f86235d97f53cd207a26f3f8c7",
-      "bytes": 15099
+      "path": "assets/release/characters/human_female_middleage_lightskinned_female_diffuse2.png",
+      "sha256": "f929d545691703e68957cd94c1a7e8917838317c75b0f72028c2e0aba9de8810",
+      "bytes": 1105544
     },
     {
-      "path": "assets/release/characters/human_female_T_Hair_1_BaseColor.png",
-      "sha256": "9c75c03a1fc3fa20aa15178465aede57f6c38c9b1edd2d8cff30bac9876c00d2",
-      "bytes": 791659
+      "path": "assets/release/characters/human_female_ponytail01_diffuse.png",
+      "sha256": "14bb06f417d69b7818e7392a29fd874f7ab1b3a082094b1671e7787949fec531",
+      "bytes": 395143
     },
     {
-      "path": "assets/release/characters/human_female_T_Hair_1_Normal.png",
-      "sha256": "2e93fd0703ff4904202a35e1da291391ff6d8ea72b5b8658353231ba9385d001",
-      "bytes": 1466073
+      "path": "assets/release/characters/human_female_resident_hairline_atlas.png",
+      "sha256": "8f9f30c625abcf5febed84a64866d3f27320e78f051717d219ef3a97bac99ba5",
+      "bytes": 1617
     },
     {
-      "path": "assets/release/characters/human_female_T_Hair_2_BaseColor.png",
-      "sha256": "c5ad58c809d00344a6f5d087f89b126f0b3faa18014f5389e9a2fcbfc4a7f995",
-      "bytes": 887523
+      "path": "assets/release/characters/human_female_resident_skin_micro_normal.png",
+      "sha256": "050e6f2129e939a8786b8ee317f22128183438759b025760ea699e610f49fa0d",
+      "bytes": 350071
     },
     {
-      "path": "assets/release/characters/human_female_T_Hair_2_Normal.png",
-      "sha256": "4ae904472517124b3f37f7f70c05060ee1057cbcce3d5a1fca036105d34ad1c8",
-      "bytes": 1660829
+      "path": "assets/release/characters/human_female_short01_diffuse.png",
+      "sha256": "eef8e6cb36bebca66d2c015bac985231ef0c1997f2fd967dce3572c862935e6c",
+      "bytes": 308569
+    },
+    {
+      "path": "assets/release/characters/human_female_short02_diffuse.png",
+      "sha256": "69dcd6061fe18615fc2e2f65d346992e2b513ebd96010a5be07294d81c1534ab",
+      "bytes": 1027321
+    },
+    {
+      "path": "assets/release/characters/human_female_short02_normal.png",
+      "sha256": "75d3097c56c300bdfbc93fd2336544ededdb67e14db7ee241376330a910b159a",
+      "bytes": 186023
     },
     {
       "path": "assets/release/characters/human_female_T_Superhero_Female_Dark_BaseColor.png",
@@ -173,59 +293,94 @@
       "bytes": 620746
     },
     {
-      "path": "assets/release/characters/human_female_T_Superhero_Female_Normal.png",
-      "sha256": "ae18f708da0eeccdbd1556d04089d04e274fe71267a7c9f9dbda6d456cee6e6d",
-      "bytes": 1235828
-    },
-    {
       "path": "assets/release/characters/human_female_T_Superhero_Female_Roughness.png",
       "sha256": "0563dcadb5ee7e378124f49406329972b4efe4e0b459f49b3ce81893c8741022",
       "bytes": 880803
     },
     {
+      "path": "assets/release/characters/human_female_teeth.png",
+      "sha256": "612034453b266759bd623e4c7bb31c04c8981ecaa3531d0d251849799fc90920",
+      "bytes": 282208
+    },
+    {
+      "path": "assets/release/characters/human_female_tongue01_diffuse.png",
+      "sha256": "8526318966f0a8b1d388f827a1a2cf64a55914cac1379ea9ce1eec7bf41d7abd",
+      "bytes": 54570
+    },
+    {
       "path": "assets/release/characters/human_male.glb",
-      "sha256": "ae3816827c3f56ce38dec3cdccbce863075eef4fc6bff55504b2e88da68f8798",
-      "bytes": 13037976
+      "sha256": "5092b20d035e576c9732bb882379cb70b8bd1e2407aea67e79d72b8129cddb03",
+      "bytes": 21879848
+    },
+    {
+      "path": "assets/release/characters/human_male_bob01_diffuse.png",
+      "sha256": "0c15e3237a8f12ff44b46ef448e6df17b99f7c424caa095da8bb7e6403513be8",
+      "bytes": 313005
+    },
+    {
+      "path": "assets/release/characters/human_male_braid01_diffuse.png",
+      "sha256": "c1f5684fc6dd7e2ece335f03cecbb271f5f6ab53bdaedd82e0748364e84d36d8",
+      "bytes": 288778
+    },
+    {
+      "path": "assets/release/characters/human_male_brown_eye.png",
+      "sha256": "4659691c7295ad6206c78b003e5fd0e5f91dcd53032fa914a229bb48cabe424b",
+      "bytes": 610817
+    },
+    {
+      "path": "assets/release/characters/human_male_eyebrow012.png",
+      "sha256": "d352e9b3d6ccb9499be5e6cb5c0d462e8d7341539e1e28a003a29c83e5ca1b0f",
+      "bytes": 94186
+    },
+    {
+      "path": "assets/release/characters/human_male_eyelashes01.png",
+      "sha256": "4b69c0fff2648874460e9caf80c31413c444218a5c50afebc425aeaa65484a35",
+      "bytes": 91600
     },
     {
       "path": "assets/release/characters/human_male_fabric_color.png",
-      "sha256": "edda032d92f024a52f06380fcb60c76810af89eb3761f225dd1c871754d8a4e3",
-      "bytes": 207490
+      "sha256": "992bf93e81fb6d3798213649819e5447a01ee172318f8de96f347079ad37b36c",
+      "bytes": 226384
     },
     {
-      "path": "assets/release/characters/human_male_T_Eye_Brown.png",
-      "sha256": "d08e3356a83211bc6ca21fe3a8e39f4b5c1a3b8f85457fc2c0fb57be09935025",
-      "bytes": 35958
+      "path": "assets/release/characters/human_male_long01_diffuse.png",
+      "sha256": "c29ca2be3a12f56eb8eb897823ae75391c78a2a91527080c6a7c4accacfd7c8f",
+      "bytes": 295726
     },
     {
-      "path": "assets/release/characters/human_male_T_Eye_Normal_png.png",
-      "sha256": "9ed61f7726a54fe346a78b9e5a18905d8e2b88f86235d97f53cd207a26f3f8c7",
-      "bytes": 15099
+      "path": "assets/release/characters/human_male_middleage_lightskinned_male_diffuse.png",
+      "sha256": "59491fda014c6eff4f3a9a2d0ecc969007ae3b7d98514eef65ac922b6ddcb442",
+      "bytes": 1101484
     },
     {
-      "path": "assets/release/characters/human_male_T_Hair_1_BaseColor.png",
-      "sha256": "9c75c03a1fc3fa20aa15178465aede57f6c38c9b1edd2d8cff30bac9876c00d2",
-      "bytes": 791659
+      "path": "assets/release/characters/human_male_ponytail01_diffuse.png",
+      "sha256": "14bb06f417d69b7818e7392a29fd874f7ab1b3a082094b1671e7787949fec531",
+      "bytes": 395143
     },
     {
-      "path": "assets/release/characters/human_male_T_Hair_1_Normal.png",
-      "sha256": "2e93fd0703ff4904202a35e1da291391ff6d8ea72b5b8658353231ba9385d001",
-      "bytes": 1466073
+      "path": "assets/release/characters/human_male_resident_hairline_atlas.png",
+      "sha256": "8f9f30c625abcf5febed84a64866d3f27320e78f051717d219ef3a97bac99ba5",
+      "bytes": 1617
     },
     {
-      "path": "assets/release/characters/human_male_T_Hair_1_Normal_png.png",
-      "sha256": "2e93fd0703ff4904202a35e1da291391ff6d8ea72b5b8658353231ba9385d001",
-      "bytes": 1466073
+      "path": "assets/release/characters/human_male_resident_skin_micro_normal.png",
+      "sha256": "ec8492f63fcecac51d882164bbc32eb686e828acffe5a6ab661d336a202e9ba5",
+      "bytes": 359825
     },
     {
-      "path": "assets/release/characters/human_male_T_Hair_2_BaseColor.png",
-      "sha256": "c5ad58c809d00344a6f5d087f89b126f0b3faa18014f5389e9a2fcbfc4a7f995",
-      "bytes": 887523
+      "path": "assets/release/characters/human_male_short01_diffuse.png",
+      "sha256": "eef8e6cb36bebca66d2c015bac985231ef0c1997f2fd967dce3572c862935e6c",
+      "bytes": 308569
     },
     {
-      "path": "assets/release/characters/human_male_T_Hair_2_Normal.png",
-      "sha256": "4ae904472517124b3f37f7f70c05060ee1057cbcce3d5a1fca036105d34ad1c8",
-      "bytes": 1660829
+      "path": "assets/release/characters/human_male_short02_diffuse.png",
+      "sha256": "69dcd6061fe18615fc2e2f65d346992e2b513ebd96010a5be07294d81c1534ab",
+      "bytes": 1027321
+    },
+    {
+      "path": "assets/release/characters/human_male_short02_normal.png",
+      "sha256": "75d3097c56c300bdfbc93fd2336544ededdb67e14db7ee241376330a910b159a",
+      "bytes": 186023
     },
     {
       "path": "assets/release/characters/human_male_T_Superhero_Male_Dark.png",
@@ -233,14 +388,119 @@
       "bytes": 650528
     },
     {
-      "path": "assets/release/characters/human_male_T_Superhero_Male_Normal.png",
-      "sha256": "10c4aa2c23ed8002526e299f89dd4fe76bdfa3a7bc45f9bd0af7c7358cea0e90",
-      "bytes": 1401369
-    },
-    {
       "path": "assets/release/characters/human_male_T_Superhero_Male_Roughness.png",
       "sha256": "08645de7b37e038ca3c01939a987dcc2cee9f3c0424b3a6c58b8c6d20205b968",
       "bytes": 846264
+    },
+    {
+      "path": "assets/release/characters/human_male_teeth.png",
+      "sha256": "612034453b266759bd623e4c7bb31c04c8981ecaa3531d0d251849799fc90920",
+      "bytes": 282208
+    },
+    {
+      "path": "assets/release/characters/human_male_tongue01_diffuse.png",
+      "sha256": "8526318966f0a8b1d388f827a1a2cf64a55914cac1379ea9ce1eec7bf41d7abd",
+      "bytes": 54570
+    },
+    {
+      "path": "assets/release/maps/residence/brown_brick_color.png",
+      "sha256": "9346d6e3e3c48a014db3dbb8c92cb1b37342e11d65b00339dce8e3eac62f155e",
+      "bytes": 1976323
+    },
+    {
+      "path": "assets/release/maps/residence/brown_brick_normal.png",
+      "sha256": "6948cf924217baa0d01ef95c5515b2e45c61c2c7ad8848fbfc39267871b69eb9",
+      "bytes": 2252226
+    },
+    {
+      "path": "assets/release/maps/residence/courtyard_paver_color.png",
+      "sha256": "829d98ca3a395d429fda52e0ae4fc1b3d8cb5d23672dc880bb749b045aeb8431",
+      "bytes": 897183
+    },
+    {
+      "path": "assets/release/maps/residence/courtyard_paver_normal.png",
+      "sha256": "074067741bbd4d48537405780e2b76ede42f467dd6358abc067b48c9ace4d6f7",
+      "bytes": 2170548
+    },
+    {
+      "path": "assets/release/maps/residence/courtyard_paver_roughness.png",
+      "sha256": "2028540fca40a350bf2846505794df541eb330f8c20861c3fa7b727b6ce0784a",
+      "bytes": 854280
+    },
+    {
+      "path": "assets/release/maps/residence/dining_table.glb",
+      "sha256": "4a28155110bc984e8d3a1df6b493242c551b4c5f42f9ba998a2ddc4eddbdea3e",
+      "bytes": 1247116
+    },
+    {
+      "path": "assets/release/maps/residence/lime_stucco_color.png",
+      "sha256": "3e046ac527c723e02b99871158b55b7bbdc089785ecaec487a8082e49af1f939",
+      "bytes": 1295633
+    },
+    {
+      "path": "assets/release/maps/residence/lime_stucco_normal.png",
+      "sha256": "2c7fbf421d019bacf52353172f9f542114156886c4be7b79842776133edf3f84",
+      "bytes": 2002548
+    },
+    {
+      "path": "assets/release/maps/residence/linden_leaf_cards.png",
+      "sha256": "7790496a32f72daef259fe54f84549e05915ccb3201496026d812290042d7917",
+      "bytes": 54589
+    },
+    {
+      "path": "assets/release/maps/residence/mid_century_lounge_chair.glb",
+      "sha256": "542382077d045c9a4e15f68e6fcc93b459ce01273ac855a8a32bc890c9f9305e",
+      "bytes": 1316148
+    },
+    {
+      "path": "assets/release/maps/residence/oak_planks_color.png",
+      "sha256": "bd79e3334e971fbcaf6a134799541d85b59b045fc9dce5c861b51d1e44caf9b5",
+      "bytes": 1459694
+    },
+    {
+      "path": "assets/release/maps/residence/oak_planks_normal.png",
+      "sha256": "96ec763e230b06b0ab4255576505c4d8435b9a1dff3ee796058fd6733f94f662",
+      "bytes": 972019
+    },
+    {
+      "path": "assets/release/maps/residence/painted_wooden_bench.glb",
+      "sha256": "9da8603c132cc88afabc15fff65d9d59dfc5bf90003e5822be4015e1b2283dc3",
+      "bytes": 1117084
+    },
+    {
+      "path": "assets/release/maps/residence/potted_plant_01.glb",
+      "sha256": "07b094ead2a3436b5a17730038b7d618f0a9a2d148dd758389f9e6db6527e93d",
+      "bytes": 2876048
+    },
+    {
+      "path": "assets/release/maps/residence/residence_architecture.glb",
+      "sha256": "8f0e1abe55553efda61f38214dab92e19d53d085454ba242bdbc067244cb2ffa",
+      "bytes": 9305796
+    },
+    {
+      "path": "assets/release/maps/residence/stone_setts_color.png",
+      "sha256": "161f504acfc74058b457462b9fb275750b904ab69ab854a9779641e99377ab37",
+      "bytes": 2191338
+    },
+    {
+      "path": "assets/release/maps/residence/stone_setts_normal.png",
+      "sha256": "5bfade8195de3d809598819fbeb6ee2ca46891a75165323f610d31030721e9d2",
+      "bytes": 2249898
+    },
+    {
+      "path": "assets/release/maps/residence/stone_setts_roughness.png",
+      "sha256": "34096b6ca5a17f768c98f70b6cde6a53edb30ace6a380e5f53d904b4c1d28b92",
+      "bytes": 396936
+    },
+    {
+      "path": "assets/release/maps/residence/wooden_display_shelves_01.glb",
+      "sha256": "361e5e15321337bf025d4d0cc7e0001cef2d0c5411dbc1a298dd11dfda8d48b0",
+      "bytes": 468428
+    },
+    {
+      "path": "assets/release/maps/residence/woven_hall_color.png",
+      "sha256": "a731d2ae6b71e71fc1b71b509c33eb818d63a41adaf45f6544699c01c52fc6bb",
+      "bytes": 1453559
     },
     {
       "path": "assets/release/props/alpha_bed.glb",
@@ -433,99 +693,184 @@
       "bytes": 6452
     },
     {
+      "path": "assets/release/textures/compacted_gravel_color.png",
+      "sha256": "e2231644dde2c553e7836dd866955cb9a29c8a4d915d954d7b7caea71ed530e0",
+      "bytes": 495976
+    },
+    {
+      "path": "assets/release/textures/compacted_gravel_normal.png",
+      "sha256": "ac8c614fc02494580aab72cfd37431daba8f96cd36ca06048c7dc630665f42b0",
+      "bytes": 1385727
+    },
+    {
+      "path": "assets/release/textures/compacted_gravel_roughness.png",
+      "sha256": "903fd37809b255ec54b5d2f88af26f257a93e0ce9260a1499e62b8c075677bae",
+      "bytes": 81390
+    },
+    {
+      "path": "assets/release/textures/concrete_slab_color.png",
+      "sha256": "a341cc1c3c48a6ca9ae0eb3645fa92d27c6d2bbb4412420f6aee8d92042e3b80",
+      "bytes": 279674
+    },
+    {
+      "path": "assets/release/textures/concrete_slab_normal.png",
+      "sha256": "e659b0ae62cfb11313aefd671e22ef84f4760fc612b9168fc5af3ddc104fdb7f",
+      "bytes": 498356
+    },
+    {
+      "path": "assets/release/textures/concrete_slab_roughness.png",
+      "sha256": "709fbe6ac4e468fdd9c1db29f693f641b781639458ba9fbb46c5c742864c0966",
+      "bytes": 17689
+    },
+    {
+      "path": "assets/release/textures/courtyard_pavers_color.png",
+      "sha256": "ac4d33c583e57bcf91de9323346783fa19e84c36ca5b992a1b3a02560bf5d09b",
+      "bytes": 253687
+    },
+    {
+      "path": "assets/release/textures/courtyard_pavers_normal.png",
+      "sha256": "f79980db31c5fda0642288dec9c71b14da4b083b43130e0285e6de166e36d80b",
+      "bytes": 763233
+    },
+    {
+      "path": "assets/release/textures/courtyard_pavers_roughness.png",
+      "sha256": "b400b6fceb7c05c0bdd3bd07fb0ec08c80630001d3e80022a7c177146a476562",
+      "bytes": 2083
+    },
+    {
+      "path": "assets/release/textures/enamel_panel_color.png",
+      "sha256": "3e1c1aa5254e3d3b8015ea07c7c7b35327d4b840070b1c073d1e8a18686804fe",
+      "bytes": 183231
+    },
+    {
+      "path": "assets/release/textures/enamel_panel_normal.png",
+      "sha256": "0ce1f33642c955dbcf3d40c3d54d7c3f7936467df50cb5c52e7a57fd0c83f3f2",
+      "bytes": 439869
+    },
+    {
+      "path": "assets/release/textures/enamel_panel_roughness.png",
+      "sha256": "82263e7a0a62e81cc43f5826928c54a71a42e226e830d80fd743daf28a0d98f9",
+      "bytes": 19885
+    },
+    {
       "path": "assets/release/textures/fabric_color.png",
-      "sha256": "edda032d92f024a52f06380fcb60c76810af89eb3761f225dd1c871754d8a4e3",
-      "bytes": 207490
+      "sha256": "992bf93e81fb6d3798213649819e5447a01ee172318f8de96f347079ad37b36c",
+      "bytes": 226384
     },
     {
       "path": "assets/release/textures/fabric_normal.png",
-      "sha256": "e82d80585a5f052823072dbdb4e247183af6ea2b559eab2d0712938a68fee858",
-      "bytes": 515460
+      "sha256": "099900a6e5803293b2b5e75d84ef48162435e85f2fc52ad2f6dffea1e9a9d4f9",
+      "bytes": 714682
     },
     {
       "path": "assets/release/textures/fabric_roughness.png",
-      "sha256": "6e182f3428fa9f6580bca464f138439646c144caeff2d0660365df260bc3c57a",
-      "bytes": 17225
+      "sha256": "c8c5efcb7ec5cd5190fcf45e4f28eddcc75a8b9e3ebe833e49c33da4a71dcac1",
+      "bytes": 64704
     },
     {
       "path": "assets/release/textures/floor_color.png",
-      "sha256": "9941533110b924536ad8a791c8236158153011502cbe22dd64f832108b880275",
-      "bytes": 157738
+      "sha256": "baaf3cd2f0ded170688cb9d1fa02e3565a2c18695f341f521be6cb204585aa09",
+      "bytes": 278915
     },
     {
       "path": "assets/release/textures/floor_normal.png",
-      "sha256": "0dc3bb361c4c36d3c549874d68b7b5c6908d657b0fef6d852efc8228fb396fa9",
-      "bytes": 149453
+      "sha256": "7e2e1199e69e4894446b07e604328c6b326b949b871b6a50ef9e05aaff269029",
+      "bytes": 653944
     },
     {
       "path": "assets/release/textures/floor_roughness.png",
-      "sha256": "661594c20a9ccb1996c84618f1f079da93b7b08a037ea1ad7a36337320ab2cda",
-      "bytes": 128122
+      "sha256": "e7ad69db46193b5492b09692d8c706b0312472756656c7f1f7bf0e597218b762",
+      "bytes": 46146
     },
     {
       "path": "assets/release/textures/metal_color.png",
-      "sha256": "96cd097bea72bb92a3648220357d7b9161ee67ff63751162cf07c255444bc95f",
-      "bytes": 108269
+      "sha256": "2e3d3c78a91b5253b2ab81c68fc185761262af18bfa86e71796bea6c1ba79e47",
+      "bytes": 239201
     },
     {
       "path": "assets/release/textures/metal_normal.png",
-      "sha256": "f2b34d60179b4b5509ee6d7bd4c0401706f7f47754014c049cf9fd276f444a0c",
-      "bytes": 29360
+      "sha256": "db6ff23733fe4a3299533d95eb55a24a3ebdd99249a81d74e8ad678c9cf733ee",
+      "bytes": 607049
     },
     {
       "path": "assets/release/textures/metal_roughness.png",
-      "sha256": "ef570430cc329e5c55a78ccf42eaa5911f4a2c9e517a8dbce692a72962ef9c5e",
-      "bytes": 16726
+      "sha256": "b3b55ebe227f0ec6ed85dd98800658bd733ef91ed2ec799599349c28523e47c2",
+      "bytes": 81215
+    },
+    {
+      "path": "assets/release/textures/painted_brick_color.png",
+      "sha256": "f8162ce87cf2a1756d864635630976d95d834bc1fb5910a0bf21522d76d42d68",
+      "bytes": 341111
+    },
+    {
+      "path": "assets/release/textures/painted_brick_normal.png",
+      "sha256": "748e7b67245baf3de14dc01a31a6ec97ff84d32a439630df968042140144545e",
+      "bytes": 1134395
+    },
+    {
+      "path": "assets/release/textures/painted_brick_roughness.png",
+      "sha256": "857f0242c280fdf303861773228e6eb40f423279da0b27a4445b2aeeaa2eeb98",
+      "bytes": 79493
     },
     {
       "path": "assets/release/textures/tile_color.png",
-      "sha256": "507bc16083a44f636c84edb531f4ba4c3893fe0e466ddc5a11b19177a0b9701c",
-      "bytes": 47338
+      "sha256": "fdc5eaf43c81c1cb62729de9c657c80f5328e08ad2580e1896a288c33f75aca1",
+      "bytes": 146252
     },
     {
       "path": "assets/release/textures/tile_normal.png",
-      "sha256": "8c1375b5f2f653b3be5be1e3242e6c986929c2dc3c807da0c330a4a6b421c7a7",
-      "bytes": 91004
+      "sha256": "8785b5722425e8497ca6e2f4d95f81e9498ebbb972890eb2530c403d4b12ec84",
+      "bytes": 508780
     },
     {
       "path": "assets/release/textures/tile_roughness.png",
-      "sha256": "e2a37c6e9ae5c6d404f63feed3d211efbbff2b739e557cd22c70352503e6db13",
-      "bytes": 35961
+      "sha256": "bc17f055b020ba99832f94ea7bcf166a15e3ae8bb606c7301b2bfe949da88a48",
+      "bytes": 42829
     },
     {
       "path": "assets/release/textures/wall_color.png",
-      "sha256": "0ea1d5de6a72ec123764f4c1ca8c69414a8cd9a27514e9d5e8db395baf2387f8",
-      "bytes": 269788
+      "sha256": "3f1ea5a73e508039eb1f31c168c0e5c27a2f5827641fd9bf5c5c6b7bf044f8db",
+      "bytes": 320183
     },
     {
       "path": "assets/release/textures/wall_normal.png",
-      "sha256": "ba50daa434d96cba57db88d0a0fcdfa18d55bde02fe527d279ad0f7f1046bb4e",
-      "bytes": 823504
+      "sha256": "b7c213539c980b8272c53c6496a1b400fa49b1441f9f772ebb5f81872a2921a6",
+      "bytes": 929592
     },
     {
       "path": "assets/release/textures/wall_roughness.png",
-      "sha256": "0cfdc300c296fedea764fa8325911c70d5d9e5fd9272d5c545b3b623f4fdc34c",
-      "bytes": 102543
+      "sha256": "66c3ea1fef937f8604ffa43f399bef57f65831c84c8b3446e75acb830674d7a8",
+      "bytes": 87003
     },
     {
       "path": "assets/release/textures/wood_color.png",
-      "sha256": "c3ea70fae4964ac18da5ea298feee280b78d8b6e0ea47a55ee45eb2cab70baeb",
-      "bytes": 149982
+      "sha256": "2765744276fe8ea6911e299a39f75a412566ce15bd1d2809c7d931036c15a079",
+      "bytes": 129043
     },
     {
       "path": "assets/release/textures/wood_normal.png",
-      "sha256": "3b5eac2b072b6e31ef098666908916227068f3faaf607484b3c7ba0b094158d0",
-      "bytes": 231335
+      "sha256": "3a1c0e7db4d44eb42a7d47f17e29cea48958ca21d09c8806105cf97d1a259b95",
+      "bytes": 209519
     },
     {
       "path": "assets/release/textures/wood_roughness.png",
-      "sha256": "529994b648d7c871b8b938da9894df76816af94b420ad7908a91cc62b5ab157b",
-      "bytes": 104852
+      "sha256": "b80dc3c919faf0148ef2a2ff212528cd9cb218e777ef2784b6f4c539aaa232e7",
+      "bytes": 45407
+    },
+    {
+      "path": "assets/release/ui/literata.ttf",
+      "sha256": "b41138c9373112f32abb589cc22e8674b06ed4048b0c513be922bdd26f274440",
+      "bytes": 955132
+    },
+    {
+      "path": "assets/release/ui/manrope.ttf",
+      "sha256": "3ae11c49db0455a3cc33e37d380f20fdb8c7f8b41dc07625c177e3d87a9d6ae6",
+      "bytes": 164700
     },
     {
       "path": "assets/release/ui/story_locations.png",
-      "sha256": "248b7ca24c1ac5e2eb12f662fe9fcbbab713a9af59290daa69558f463103f27f",
-      "bytes": 2922089
+      "sha256": "8431fdbfdf529dfa1b28c2d3b423d5bfb9a6cec3341f8b24055c7dcac16a1baa",
+      "bytes": 3268700
     }
   ]
 }

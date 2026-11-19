@@ -12,6 +12,7 @@ const PersonalMemory = preload("res://scripts/release_ai/personal_memory.gd")
 const ProviderCatalog = preload("res://scripts/release_ai/provider_catalog.gd")
 const PNGEncoder = preload("res://scripts/release_storage/png_encoder.gd")
 const WebBridge = preload("res://scripts/release_storage/web_bridge.gd")
+const DISPLAY_PRESETS := {"1080p": Vector2i(1920, 1080), "1440p": Vector2i(2560, 1440), "2160p": Vector2i(3840, 2160)}
 
 var simulation = Simulation.new()
 var world: Node3D
@@ -27,7 +28,7 @@ var advancing := false
 var mode := "demo"
 var selected := "person_00"
 var generation := 0
-var settings := {"language":"ru","quality":"medium","speed":1.0,"sfx_volume":0.5,"model":"~deepseek/deepseek-v4-flash-latest","provider":"byteplus","budget":1000.0,"ai_enabled":false}
+var settings := {"language":"ru","quality":"medium","speed":1.0,"sfx_volume":0.5,"model":"~deepseek/deepseek-v4-flash-latest","provider":"byteplus","budget":1000.0,"ai_enabled":false,"display_mode":"windowed","window_preset":"auto","render_scale":1.0,"ui_scale":1.0}
 var _key := ""
 var _clock := 0.0
 var _ui_clock := 0.0
@@ -41,6 +42,9 @@ var _reviewing := false
 var _replay_cursor := 0
 var _replay_clock := 0.0
 var _replay_state: Dictionary = {}
+var _replay_paused := false
+var _live_view: Dictionary = {}
+var _windowed_size := Vector2i.ZERO
 var _sounds: Dictionary = {}
 var _test_profile := false
 var _last_autosave := 0.0
@@ -87,6 +91,8 @@ func _ready() -> void:
 		_ledger_path="user://release_test_profile/usage.json"
 		_presets_path="user://release_test_profile/appearance_presets.json"
 		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("user://release_test_profile"))
+	if WebBridge.is_web():settings.render_scale=0.75
+	elif DisplayServer.get_name()!="headless" and RenderingServer.get_current_rendering_method()=="forward_plus":settings.quality="high"
 	_load_settings()
 	_catalog=ProviderCatalog.new();add_child(_catalog);_catalog.quote_ready.connect(_on_quote_ready)
 	ledger.configure(minf(1000.0,float(settings.budget)) if OS.has_feature("editor") else float(settings.budget),_ledger_path,4)
@@ -98,7 +104,9 @@ func _ready() -> void:
 	ui.command.connect(_on_command)
 	simulation.reset("closed_block",8,"episode",1)
 	world.setup(simulation.snapshot())
-	world.set_quality(str(settings.quality))
+	_apply_graphics(false)
+	if not _test_profile and (settings.display_mode != "windowed" or settings.window_preset != "auto"):
+		_apply_window_settings()
 	ui.setup(world)
 	ui.set_language(str(settings.language))
 	_make_runtimes()
@@ -118,7 +126,8 @@ func _ready() -> void:
 		if argument.begins_with("--agents="):launch.count=int(argument.trim_prefix("--agents="));custom_launch=true
 		elif argument.begins_with("--map="):launch.map_id=argument.trim_prefix("--map=");custom_launch=true
 		elif argument.begins_with("--scenario="):launch.scenario=argument.trim_prefix("--scenario=");custom_launch=true
-	if custom_launch:new_session(launch)
+		elif argument.begins_with("--seed="):launch.seed=int(argument.trim_prefix("--seed="));custom_launch=true
+	if custom_launch:await new_session(launch)
 	if "--auto-run" in OS.get_cmdline_user_args():ui.show_main_menu(false);_set_running(true)
 	if "--configure-ai" in OS.get_cmdline_user_args():_set_running(false);ui.show_main_menu(false);ui.show_settings()
 
@@ -136,10 +145,13 @@ func _process(delta: float) -> void:
 		_ui_clock = 0.0
 		_refresh(false)
 	if _reviewing:
+		if _replay_paused:return
 		_replay_clock += delta
 		if _replay_clock >= 0.35 and _replay_cursor < repository.sequence:
 			_replay_clock = 0.0; _replay_cursor += 1; _display_replay()
 		return
+	if not advancing and not _sampling and int(simulation.state.event_cursor) != _last_event_cursor:
+		_record()
 	if (running or _single_step) and not _sampling and not advancing and not _provider_pending and not _quote_refresh_queued:
 		collect_decisions()
 	if _single_step and not _sampling and _pending_decisions.is_empty():
@@ -206,13 +218,15 @@ func _on_command(name: String, payload: Dictionary) -> void:
 	if _reviewing and name in ["save","god","appearance","intent","scenario_intervention","continue_sandbox"]:
 		ui.set_status(_text("Вернитесь в текущий мир кнопкой «Продолжить».","Press Continue to return to the current world."))
 		return
-	if (advancing or _sampling) and name in ["new_session","step","save","load","replay","god","appearance","intent","provider"]:
+	if (advancing or _sampling) and name in ["new_session","step","save","load","replay","replay_event","god","appearance","intent","provider"]:
 		_deferred_commands.append({"name":name,"payload":payload.duplicate(true)})
 		ui.set_status(_text("Завершаем уже выполненный игровой шаг и его снимки…","Finishing the committed step and its photographs…"));return
 	_play_sound("click")
 	match name:
 		"new_session": new_session(payload)
-		"run": _set_running(bool(payload.get("value",not running)))
+		"run":
+			if _reviewing: _leave_replay()
+			_set_running(bool(payload.get("value",not running)))
 		"retry_agent":
 			var id:=str(payload.get("id",selected))
 			if not _reviewing and _blocked_ai.has(id) and mode=="real_vlm":
@@ -222,15 +236,21 @@ func _on_command(name: String, payload: Dictionary) -> void:
 				_next_decision.erase(id)
 				if not running:_set_running(true,false)
 				_refresh(false)
-		"step": single_step()
+		"step":
+			if _reviewing:_seek_replay(_replay_cursor+1)
+			else:single_step()
 		"select":
 			var id := str(payload.get("id",selected))
 			var displayed:Dictionary=_replay_state if _reviewing else simulation.state
 			if displayed.agents.has(id):
+				var changed := selected != id
 				selected=id
 				world.select_agent(id)
+				if changed:
+					world.follow_selected=false
+					if not world.first_person:world.center_agent()
 				if _reviewing:_refresh_replay()
-				else:_refresh()
+				else:_refresh(false)
 		"view":
 			world.set_first_person(bool(payload.get("first_person",false)))
 			if _reviewing:_refresh_replay()
@@ -238,13 +258,31 @@ func _on_command(name: String, payload: Dictionary) -> void:
 		"save": save_slot(int(payload.get("slot",1)))
 		"load": load_slot(int(payload.get("slot",1)))
 		"replay": start_replay()
+		"replay_event":
+			_commit_pending_events()
+			var frame: int = repository.frame_for_event(int(payload.get("seq", -1)))
+			if frame < 0:ui.set_status(_text("Кадр этого события недоступен.","The frame for this event is unavailable."))
+			elif _reviewing:_seek_replay(frame)
+			else:start_replay(frame, true)
+		"replay_pause":
+			if _reviewing:
+				_replay_paused=bool(payload.get("paused",not _replay_paused))
+				if not _replay_paused and _replay_cursor >= repository.sequence:
+					_replay_cursor=0;_display_replay()
+				else:_refresh_replay()
+		"replay_seek":
+			if _reviewing:_seek_replay(int(payload.get("frame",_replay_cursor)))
+		"replay_exit": _leave_replay()
 		"settings":
-			for key in ["language","quality","speed","sfx_volume"]:
+			var old_window := [settings.display_mode,settings.window_preset]
+			for key in ["language","quality","speed","sfx_volume","display_mode","window_preset","render_scale","ui_scale"]:
 				if payload.has(key): settings[key]=payload[key]
-			settings.speed=clampf(float(settings.speed),0.5,2.0)
-			settings.sfx_volume=clampf(float(settings.sfx_volume),0.0,1.0)
+			_validate_settings()
 			for runtime in runtimes.values():runtime.demo_language=str(settings.language)
-			world.set_quality(str(settings.quality));ui.set_language(str(settings.language)); _save_settings(); _refresh()
+			_apply_graphics(old_window != [settings.display_mode,settings.window_preset])
+			ui.set_language(str(settings.language));_save_settings()
+			if _reviewing:_refresh_replay()
+			else:_refresh(false)
 		"provider": configure_provider(payload)
 		"god": god_intervention(str(payload.get("command","")),payload.get("args",{}))
 		"web_connect": WebBridge.connect_router()
@@ -265,8 +303,24 @@ func _on_command(name: String, payload: Dictionary) -> void:
 			if displayed.agents.has(event_actor):
 				selected=event_actor
 				world.select_agent(selected)
-			if payload.get("position") is Array and payload.position.size()==2:world.focus_position(payload.position)
-			elif displayed.agents.has(event_actor):world.focus_agent()
+			if payload.get("position") is Array and payload.position.size()==2:
+				world.set_first_person(false);world.focus_position(payload.position,true)
+			elif displayed.agents.has(event_actor):world.center_agent()
+			if _reviewing:_refresh_replay()
+			else:_refresh(false)
+		"focus_location":
+			if payload.get("position") is Array and payload.position.size()==2:
+				world.set_first_person(false);world.focus_position(payload.position,true)
+				if _reviewing:_refresh_replay()
+				else:_refresh(false)
+		"fit_map":
+			world.toggle_overview()
+			if _reviewing:_refresh_replay()
+			else:_refresh(false)
+		"follow":
+			if world.follow_selected:world.follow_selected=false
+			else:
+				world.set_first_person(false);world.focus_agent()
 			if _reviewing:_refresh_replay()
 			else:_refresh(false)
 		"appearance":
@@ -291,10 +345,17 @@ func new_session(config: Dictionary) -> void:
 	_entered_story=true
 	_next_decision.clear(); _observations.clear(); _device_screens.clear(); _clock=0.0; _last_autosave=0.0;_episode_presented=false
 	_demo_camera_due.clear()
-	world.setup(simulation.snapshot()); world.select_agent(selected)
+	world.set_first_person(false);world.setup(simulation.snapshot()); world.select_agent(selected)
+	_frame_residential_episode()
 	_make_runtimes(); repository.begin(simulation.snapshot()); _last_event_cursor=int(simulation.state.event_cursor)
 	_chronicle=simulation.state.events.duplicate(true)
 	_refresh(); ui.set_status(_text("Новая сессия готова. Нажмите «Продолжить», чтобы начать.","A new story is ready. Press Continue to begin."))
+
+func _frame_residential_episode() -> void:
+	if world.first_person or simulation.state.map_id != "residence":
+		return
+	if simulation.state.scenario == "common_house" or simulation.state.get("completed_episode", {}).get("id") == "common_house":
+		world.frame_story_start()
 
 func _make_runtimes() -> void:
 	for runtime in runtimes.values(): runtime.cancel_pending(); runtime.queue_free()
@@ -620,6 +681,7 @@ func _prepare_map(map_id:String) -> bool:
 	return ok
 
 func _download_report() -> void:
+	_commit_pending_events()
 	var state:Dictionary=_replay_state if _reviewing else simulation.state
 	var story:Dictionary=state.get("scenario_state",state.get("completed_episode",{}))
 	if state.get("scenario")=="sandbox" and state.has("completed_episode"):story=state.completed_episode
@@ -667,6 +729,7 @@ func _record() -> void:
 	repository.record(simulation.state,new_events)
 
 func save_slot(slot: int, automatic: bool = false) -> Error:
+	_commit_pending_events()
 	var personal: Dictionary={}
 	for id in runtimes:personal[id]=runtimes[id].export_state()
 	var result:Error=repository.save_slot(slot,{"world":simulation.export_state(),"runtimes":personal,"next_decision":_next_decision,"settings":_public_settings()})
@@ -676,7 +739,7 @@ func save_slot(slot: int, automatic: bool = false) -> Error:
 	return result
 
 func load_slot(slot: int) -> void:
-	_set_running(false)
+	if not _reviewing:_set_running(false)
 	var envelope:Dictionary=repository.load_slot(slot)
 	if envelope.is_empty():ui.set_status(_text("Слот пуст или повреждён.","The slot is empty or damaged."));return
 	var data:Dictionary=envelope.data
@@ -706,23 +769,65 @@ func load_slot(slot: int) -> void:
 	_observations.clear();_device_screens.clear()
 	_demo_camera_due.clear()
 	if not simulation.state.agents.has(selected):selected=str(simulation.state.agents.keys()[0])
-	_reviewing=false;_episode_presented=bool(simulation.state.get("scenario_state",{}).get("completed",false));world.setup(simulation.snapshot());world.select_agent(selected)
+	_reviewing=false;_replay_state={};_replay_events=[];_live_view.clear()
+	_episode_presented=bool(simulation.state.get("scenario_state",{}).get("completed",false));world.setup(simulation.snapshot());world.select_agent(selected)
+	_frame_residential_episode()
 	_last_event_cursor=int(simulation.state.event_cursor)
 	_chronicle=repository.events_through(repository.sequence)
 	_refresh();ui.set_status(_text("Сессия восстановлена. Поколение запросов обновлено; денежный бюджет сохранён.","Story restored. Previous AI requests are invalidated; spending is preserved."))
 
-func start_replay() -> void:
-	_set_running(false);_invalidate();repository.flush();_reviewing=true;_replay_cursor=0;_replay_clock=0.0;_display_replay()
+func _commit_pending_events() -> void:
+	if not _reviewing and int(simulation.state.event_cursor) != _last_event_cursor:
+		_record()
+
+func start_replay(frame: int = 0, paused: bool = false) -> void:
+	if not _reviewing:
+		_commit_pending_events()
+		_live_view={"selected":selected,"camera":world.snapshot_camera()}
+		_set_running(false)
+		_invalidate()
+		_replay_state={}
+		_replay_events=[]
+		_reviewing=true
+	_replay_paused=paused
+	_replay_cursor=clampi(frame,0,repository.sequence)
+	_replay_clock=0.0
+	_display_replay()
+
+func _seek_replay(frame: int) -> void:
+	_replay_paused=true
+	_replay_cursor=clampi(frame,0,repository.sequence)
+	_replay_clock=0.0
+	_display_replay()
+
+func _leave_replay() -> void:
+	if not _reviewing:return
+	_reviewing=false
+	_replay_state={}
+	_replay_events=[]
+	selected=str(_live_view.get("selected",selected))
+	world.reset_action_feedback()
+	world.sync_state(simulation.snapshot(),true)
+	world.select_agent(selected)
+	world.restore_camera(_live_view.get("camera",{}))
+	_live_view.clear()
+	_set_running(false)
 
 func _display_replay() -> void:
 	var state:Dictionary=repository.reconstruct(_replay_cursor)
-	if state.is_empty():ui.set_status(_text("Повреждён фрагмент журнала.","The journal fragment is damaged."));return
+	if state.is_empty():
+		_leave_replay();ui.set_status(_text("Повреждён фрагмент журнала.","The journal fragment is damaged."));return
 	var validator=Simulation.new()
 	if not validator.import_state(state):
-		_reviewing=false;ui.set_status(_text("Запись журнала содержит недопустимый мир.","The journal contains an invalid world state."));return
+		_leave_replay();ui.set_status(_text("Запись журнала содержит недопустимый мир.","The journal contains an invalid world state."));return
+	if _replay_state.is_empty() or int(state.get("event_cursor",0)) < int(_replay_state.get("event_cursor",0)):
+		world.reset_action_feedback()
 	_replay_state=state
-	_replay_events=repository.events_through(_replay_cursor)
+	var event_count: int = repository.event_count_through(_replay_cursor)
+	if event_count < _replay_events.size():_replay_events.resize(event_count)
+	else:_replay_events.append_array(repository.events_slice(_replay_events.size(),event_count))
 	world.sync_state(state,true)
+	if _replay_cursor>=repository.sequence:_replay_paused=true
 	_refresh_replay()
 	ui.set_status(_text("Воспроизведение %d / %d — без обращений к модели","Replay %d / %d — no model calls")%[_replay_cursor,repository.sequence])
 
@@ -755,9 +860,11 @@ func _session_info(replay:Dictionary={}) -> Dictionary:
 		"budget":budget,"slots":_slot_cache,"replaying":historical,"map_catalog":simulation.get_map_catalog(),
 		"version":ProjectSettings.get_setting("application/config/version"),"scenario":shown.get("scenario_state",{}),
 		"chronicle_events":_replay_events if historical else _chronicle,
+		"replay_frame":_replay_cursor,"replay_length":repository.sequence,"replay_paused":_replay_paused,"replay_first_event":repository.first_replay_event(),
+		"replay_event_frames":repository.event_frame_index(),
 		"observations":{} if historical else _observations,"device_screens":{} if historical else _device_screens,
 		"agent_statuses":statuses,"decision_states":{} if historical else _decision_states,"appearance_presets":appearance_presets,
-		"effective_speed":_effective_speed,"web":_web_booted,
+		"effective_speed":_effective_speed,"web":_web_booted,"display_presets":_display_presets(),"display_pixels":get_window().size,
 		"connection":{"mode":mode,"has_key":not _key.is_empty(),"budget":budget,"waiting":waiting,"pause_reason":_ai_pause_reason}
 	}
 
@@ -794,11 +901,52 @@ func _load_settings() -> void:
 		if loaded is Dictionary:
 			for key in settings:
 				if loaded.has(key) and typeof(loaded[key])==typeof(settings[key]):settings[key]=loaded[key]
+	_validate_settings()
+	settings.budget=clampf(float(settings.budget),0.01,1000.0 if OS.has_feature("editor") else 1000000.0)
+
+func _validate_settings() -> void:
 	settings.language="en" if str(settings.language)=="en" else "ru"
 	if settings.quality not in ["low","medium","high"]:settings.quality="medium"
 	settings.speed=clampf(float(settings.speed),0.5,2.0)
 	settings.sfx_volume=clampf(float(settings.sfx_volume),0.0,1.0)
-	settings.budget=clampf(float(settings.budget),0.01,1000.0 if OS.has_feature("editor") else 1000000.0)
+	if settings.display_mode not in ["windowed","fullscreen"]:settings.display_mode="windowed"
+	if not DISPLAY_PRESETS.has(settings.window_preset):settings.window_preset="auto"
+	settings.render_scale=float(settings.render_scale)
+	if settings.render_scale not in [0.5,0.75,1.0]:settings.render_scale=0.75 if WebBridge.is_web() else 1.0
+	settings.ui_scale=clampf(float(settings.ui_scale),0.85,1.3)
+
+func _display_presets() -> Array[String]:
+	var presets: Array[String]=["auto"]
+	if WebBridge.is_web() or DisplayServer.get_name()=="headless":return presets
+	var window:=get_window()
+	var usable:=DisplayServer.screen_get_usable_rect(window.current_screen).size
+	var frame:=Vector2i(16,40) if window.mode==Window.MODE_FULLSCREEN else (window.get_size_with_decorations()-window.size).max(Vector2i.ZERO)
+	for key in DISPLAY_PRESETS:
+		var size:Vector2i=DISPLAY_PRESETS[key]+frame
+		if size.x<=usable.x and size.y<=usable.y:presets.append(key)
+	return presets
+
+func _apply_graphics(apply_window: bool) -> void:
+	get_window().content_scale_factor=float(settings.ui_scale)
+	world.set_render_scale(float(settings.render_scale))
+	world.set_quality(str(settings.quality))
+	if apply_window:_apply_window_settings()
+
+func _apply_window_settings() -> void:
+	if WebBridge.is_web() or DisplayServer.get_name()=="headless":return
+	var window:=get_window()
+	if settings.display_mode=="fullscreen":
+		if window.mode==Window.MODE_WINDOWED:_windowed_size=window.size
+		window.mode=Window.MODE_FULLSCREEN
+		return
+	var was_fullscreen:=window.mode==Window.MODE_FULLSCREEN
+	window.mode=Window.MODE_WINDOWED
+	if settings.window_preset in _display_presets() and DISPLAY_PRESETS.has(settings.window_preset):
+		window.size=DISPLAY_PRESETS[settings.window_preset]
+		var usable:=DisplayServer.screen_get_usable_rect(window.current_screen)
+		window.position=usable.position+(usable.size-window.get_size_with_decorations())/2
+	elif was_fullscreen and _windowed_size!=Vector2i.ZERO:
+		window.size=_windowed_size
 
 func _save_settings() -> void:
 	if not _test_profile:Repository.atomic_write("user://release_settings.json",JSON.stringify(_public_settings()))

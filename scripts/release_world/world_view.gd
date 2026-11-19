@@ -10,11 +10,23 @@ const BODIES := 4
 const CAPTURE_BODY := 8
 const SELECTED_BODY := 16
 const CUTAWAY := 32
+const DISPLAY_BODY := 64
+const DISTANT_BODY := 128
 const OVERLAY := 1 << 19
 const EYES_SIZE := Vector2i(640, 360)
-const OutfitShader = preload("res://scripts/release_world/clothing.gdshader")
+const WEB_CLOSE_RESIDENTS := 5
+const SEATED_EYE_RISE := .77
+const SEATED_FLOOR_HEIGHT := .045
 const PortraitStage = preload("res://scripts/release_world/character_portrait.gd")
+const CharacterFinish = preload("res://scripts/release_world/character_finish.gd")
 const FaceShape = preload("res://scripts/release_world/face_modifier.gd")
+const SeatedHandContact = preload("res://scripts/release_world/seated_hand_contact.gd")
+const SeatedFootLevel = preload("res://scripts/release_world/seated_foot_level.gd")
+const WardrobeDeformation = preload("res://scripts/release_world/wardrobe_deformation.gd")
+const Art = preload("res://scripts/release_world/art_direction.gd")
+const ResidenceScenery = preload("res://scripts/release_world/residence_scenery.gd")
+const ResidenceSeats = preload("res://scripts/game/residence_seats.gd")
+const ResidenceLighting = preload("res://scripts/release_world/residence_lighting.gd")
 
 var observer_viewport: SubViewport
 var observer_camera: Camera3D
@@ -30,21 +42,33 @@ var first_person := false
 var follow_selected := false
 var _content: Node3D
 var _state: Dictionary = {}
+var _open_containers: Dictionary = {}
 var _targets: Dictionary = {}
 var _players: Dictionary = {}
 var _models: Dictionary = {}
 var _model_faces: Dictionary = {}
+var _faces: Dictionary = {}
+var _face_minute := -1.0
+var _face_clock := 0.0
+var _face_clock_limit := 0.0
 var _animation_keys: Dictionary = {}
 var _animation_choices: Dictionary = {}
+var _clip_names: Dictionary = {}
 var _meshes: Dictionary = {}
 var _appearances: Dictionary = {}
 var _held_markers: Dictionary = {}
+var _seat_motion: Dictionary = {}
+var _seat_leg_solvers: Dictionary = {}
 var _capture_actor := ""
 var _capture_frame := -100
 var _focus := Vector3.ZERO
+var _focus_goal := Vector3.ZERO
+var _centering := false
 var _yaw := 0.0
 var _elevation := 35.0
 var _zoom := 21.0
+var _perspective := false
+var _overview_return: Dictionary = {}
 var _drag := 0
 var _quality := "medium"
 var _selection: MeshInstance3D
@@ -64,22 +88,37 @@ var _grounding_generation: int=0
 var human_viewport: SubViewport
 var human_camera: Camera3D
 var _display_size := Vector2i(1440,940)
+var _render_scale := 1.0
+var _overview_zoom := 140.0
 var _hud_portrait: Node
 var _portrait_cache: Dictionary = {}
 var _portrait_pending := ""
 var _labels: Array = []
+var _label_timer := 0.0
 var _facades: Array = []
+var _residence_roofs: Array[Dictionary] = []
+var _residence_canopies: Array = []
+var _residence_lighting: RefCounted
 var _last_facade_yaw := INF
 var _notice_boards: Dictionary = {}
 var _material_cache: Dictionary = {}
+var _box_meshes: Dictionary = {}
 var _visual_event_cursor := -1
 var _action_feedback: Dictionary = {}
 var _speech_bubbles: Dictionary = {}
+var _proxy_group: Node3D
+var _proxies: Array[MultiMesh] = []
+var _use_proxies := false
+var _proxy_timer := 0.0
+var _near_observer: Dictionary = {}
 
 func setup(state: Dictionary) -> void:
 	_grounding_generation+=1
 	_grounding_badges.clear()
 	_facades.clear();_last_facade_yaw=INF;_labels.clear();_notice_boards.clear();_portrait_pending="";_material_cache.clear();_action_feedback.clear();_speech_bubbles.clear();_visual_event_cursor=-1
+	_residence_roofs.clear()
+	_residence_canopies.clear()
+	_residence_lighting = null
 	for child in get_children():
 		child.free()
 	agent_viewports.clear()
@@ -92,21 +131,41 @@ func setup(state: Dictionary) -> void:
 	_players.clear()
 	_models.clear()
 	_model_faces.clear()
+	_faces.clear()
+	_face_minute = -1.0
+	_face_clock = 0.0
+	_face_clock_limit = 0.0
 	_animation_keys.clear()
 	_animation_choices.clear()
+	_clip_names.clear()
 	_meshes.clear()
 	_appearances.clear()
 	_held_markers.clear()
+	_seat_motion.clear()
+	_seat_leg_solvers.clear()
 	_targets.clear()
 	_capture_actor = ""
+	_proxies.clear()
+	_proxy_group=null
+	_use_proxies=false
+	_near_observer.clear()
+	_proxy_timer=0.0
+	_centering = false
+	follow_selected = false
+	_perspective = false
+	_overview_return.clear()
+	_drag = 0
 	_manifest = _load_manifest()
 	_user_camera=false
 	_state = {}
 	_content = Node3D.new()
 	_content.name = "LivingWorld"
 	add_child(_content)
-	_environment()
-	_build_map(state.get("geometry", {}))
+	var geometry: Dictionary = state.get("geometry", {})
+	_environment(str(geometry.get("palette", "teal")))
+	_build_map(geometry)
+	if _residence_lighting != null:
+		_residence_lighting.bind_fixtures(_content.get_node_or_null("ResidenceScenery") as Node3D)
 	_build_observer(state.get("geometry", {}))
 	for id in state.get("agents", {}):
 		_build_agent(str(id), state.agents[id])
@@ -114,28 +173,59 @@ func setup(state: Dictionary) -> void:
 		selected_agent = str(state.get("agents", {}).keys()[0]) if not state.get("agents", {}).is_empty() else ""
 	_selection = MeshInstance3D.new()
 	var ring := TorusMesh.new()
-	ring.inner_radius = 0.38
-	ring.outer_radius = 0.43
+	ring.inner_radius = 0.37
+	ring.outer_radius = 0.39
 	ring.rings = 36
 	ring.ring_segments = 10
 	_selection.mesh = ring
-	_selection.material_override = _material(Color("eecf83"))
+	var highlight := StandardMaterial3D.new()
+	highlight.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	highlight.albedo_color = Color("c9a76d")
+	_selection.material_override = highlight
+	_selection.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_selection.layers = OVERLAY
 	_content.add_child(_selection)
 	_build_screen()
 	select_agent(selected_agent)
 	sync_state(state, true)
-	if agent_nodes.has(selected_agent):
-		_focus=agent_nodes[selected_agent].position+Vector3.UP*0.7;_zoom=8.0;_user_camera=true;follow_selected=true;_update_observer()
+	set_quality(_quality)
+	_update_observer_lod()
 
 func sync_state(state: Dictionary, immediate: bool = false) -> void:
-	# Keep a stable render frame without copying the journal and private histories.
-	_state = {"agents":state.get("agents",{}),"items":state.get("items",{}),"geometry":state.get("geometry",{})}.duplicate(true)
+	# Only retain values used between simulation updates.
+	var agents := {}
+	var held_items := {}
+	var geometry: Dictionary = state.get("geometry", {})
+	for id in state.get("items", {}):
+		var holder := str(state.items[id].get("holder", ""))
+		if not holder.is_empty():
+			held_items[id] = holder
+	_state = {"agents": agents, "items": held_items}
+	if _residence_lighting != null:
+		_residence_lighting.apply(float(state.get("minute", 0.0)))
 	_sync_action_feedback(state)
+	_open_containers.clear()
+	for prop in state.get("geometry", {}).get("props", []):
+		if prop.get("storage", false) and prop.get("open", false) and not prop.get("locked", false):
+			_open_containers[str(prop.get("id", ""))] = true
 	for id in state.get("agents", {}):
 		var data: Dictionary = state.agents[id]
 		if not agent_nodes.has(id):
 			_build_agent(str(id), data)
+		var inventory: Array = data.get("inventory", []).slice(0, 1)
+		agents[id] = {
+			"appearance": {"height": data.get("appearance", {}).get("height", 1.0)},
+			"outfit": int(data.get("appearance", {}).get("outfit", 0)),
+			"shoe_type": int(data.get("appearance", {}).get("shoes", 0)),
+			"color": data.get("color", "83988b"), "skin": data.get("appearance", {}).get("skin", "d9b497"),
+			"body": {"left_leg": data.get("body", {}).get("left_leg", "healthy"), "right_leg": data.get("body", {}).get("right_leg", "healthy")},
+			"busy": {"type": data.get("busy", {}).get("type", "")},
+			"seat": ResidenceSeats.occupied(data, geometry),
+			"alive": data.get("alive", true), "sleeping": data.get("sleeping", false),
+			"unconscious": data.get("unconscious", false), "carried_by": data.get("carried_by", ""),
+			"inventory": inventory,
+			"held_phone": not inventory.is_empty() and state.get("items", {}).get(inventory[0], {}).get("kind") == "phone",
+		}
 		var pos: Array = data.get("position", [0, 0])
 		var lift: float=float(data.get("surface_height",0.0))+(0.8 if not str(data.get("carried_by","")).is_empty() else 0.0)
 		_targets[id] = {"position": Vector3(float(pos[0]), lift, float(pos[1])), "heading":deg_to_rad(float(data.get("heading", 0)))}
@@ -143,8 +233,9 @@ func sync_state(state: Dictionary, immediate: bool = false) -> void:
 			agent_nodes[id].position = _targets[id].position
 			agent_nodes[id].rotation.y = _targets[id].heading
 		_apply_appearance(str(id), data.get("appearance", {}), str(data.get("color", "83bfa9")))
-		_apply_pose(str(id), data)
+		_apply_pose(str(id), data, immediate)
 		_sync_camera(str(id), true)
+	_sync_face_context(state, immediate)
 	for id in state.get("items", {}):
 		var item: Dictionary = state.items[id]
 		if not item_nodes.has(id):
@@ -156,7 +247,13 @@ func sync_state(state: Dictionary, immediate: bool = false) -> void:
 	for door in state.get("geometry", {}).get("doors", []):
 		if door_nodes.has(str(door.get("id", ""))):
 			var pivot: Node3D = door_nodes[str(door.id)]
-			pivot.rotation.y = deg_to_rad(90.0) if bool(door.get("open", false)) else 0.0
+			var is_open := bool(door.get("open", false))
+			if pivot.has_meta("slide_offset"):
+				var closed_position: Vector3 = pivot.get_meta("closed_position")
+				var slide_offset: Vector3 = pivot.get_meta("slide_offset")
+				pivot.position = closed_position + slide_offset if is_open else closed_position
+			else:
+				pivot.rotation.y = deg_to_rad(90.0) if is_open else 0.0
 	for prop in state.get("geometry",{}).get("props",[]):
 		if storage_doors.has(str(prop.get("id",""))):storage_doors[str(prop.id)].rotation.y=deg_to_rad(-105) if prop.get("open",false) else 0.0
 		if _notice_boards.has(str(prop.get("id",""))):
@@ -165,29 +262,54 @@ func sync_state(state: Dictionary, immediate: bool = false) -> void:
 	_update_selection()
 	_sync_human_camera()
 	_update_labels()
+	if _use_proxies:_update_proxy_instances()
 
 func _process(delta: float) -> void:
+	_face_clock = minf(_face_clock + delta, _face_clock_limit)
 	for id in _targets:
 		if not agent_nodes.has(id):
 			continue
 		var body: Node3D = agent_nodes[id]
-		var distance: float = body.position.distance_to(_targets[id].position)
-		body.position = body.position.lerp(_targets[id].position, minf(1.0, delta * 12.0))
-		body.rotation.y = lerp_angle(body.rotation.y, float(_targets[id].heading), minf(1.0, delta * 12.0))
+		var previous := body.position
+		var blend := 1.0 - exp(-14.0 * delta)
+		body.position = body.position.lerp(_targets[id].position, blend)
+		body.rotation.y = lerp_angle(body.rotation.y, float(_targets[id].heading), blend)
 		if _state.get("agents", {}).has(id):
-			_animate(str(id), _state.agents[id], distance > 0.015)
+			var speed := Vector2(body.position.x - previous.x, body.position.z - previous.z).length() / maxf(delta, 0.0001)
+			_animate(str(id), _state.agents[id], speed)
+			_update_wardrobe(str(id))
+			_update_seat_pose(str(id))
+			_present_face(str(id))
 			var inventory: Array = _state.agents[id].get("inventory", [])
 			if not inventory.is_empty() and item_nodes.has(inventory[0]):
-				var equipped: Node3D = item_nodes[inventory[0]]
-				equipped.global_position = _held_markers[id].global_position
-				equipped.global_rotation = body.global_rotation
-		_sync_camera(str(id), id==_capture_actor and Engine.get_frames_drawn()<=_capture_frame+1)
+				_set_held_pose(item_nodes[inventory[0]], str(id))
+		if id == _capture_actor and Engine.get_frames_drawn() <= _capture_frame + 1:
+			_sync_camera(str(id), true)
+		elif first_person and id == selected_agent:
+			_sync_camera(str(id), false)
 	if follow_selected and agent_nodes.has(selected_agent):
-		_focus = _focus.lerp(agent_nodes[selected_agent].position+Vector3.UP*.7, minf(1.0, delta * 6.0))
-		_update_observer()
+		_focus_goal = _resident_focus()
+	if follow_selected or _centering:
+		var offset := _focus.distance_squared_to(_focus_goal)
+		if offset > 0.0001:
+			_focus = _focus.lerp(_focus_goal, 1.0 - exp(-9.0 * delta))
+			_update_observer()
+		elif _centering:
+			_focus = _focus_goal
+			_centering = false
+			_update_observer()
 	_update_selection()
-	_sync_human_camera()
-	_update_labels()
+	if first_person:
+		_sync_human_camera()
+	_label_timer -= delta
+	if _label_timer <= 0.0:
+		_label_timer = 0.09
+		_update_labels()
+	if _use_proxies and not first_person:
+		_proxy_timer-=delta
+		if _proxy_timer<=0.0:
+			_proxy_timer=0.06
+			_update_proxy_instances()
 
 func prepare_capture(id: String) -> void:
 	# One extra eye viewport is requested per frame. Other eyes remain dormant.
@@ -266,11 +388,11 @@ func current_texture() -> Texture2D:
 func select_agent(id: String) -> void:
 	if not agent_nodes.has(id):
 		return
-	if not selected_agent.is_empty() and agent_nodes.has(selected_agent):
-		_set_body_layer(selected_agent, CAPTURE_BODY if selected_agent==_capture_actor and Engine.get_frames_drawn()<=_capture_frame+1 else BODIES)
-		if agent_viewports.has(selected_agent):
-			agent_viewports[selected_agent].render_target_update_mode = SubViewport.UPDATE_DISABLED
+	var previous:=selected_agent
 	selected_agent = id
+	if not previous.is_empty() and agent_nodes.has(previous):
+		_set_body_layer(previous, CAPTURE_BODY if previous==_capture_actor and Engine.get_frames_drawn()<=_capture_frame+1 else BODIES)
+		if agent_viewports.has(previous):agent_viewports[previous].render_target_update_mode=SubViewport.UPDATE_DISABLED
 	_set_body_layer(id, SELECTED_BODY)
 	agent_cameras[id].cull_mask = WORLD | WALLS | BODIES | CAPTURE_BODY
 	agent_viewports[id].render_target_update_mode = SubViewport.UPDATE_DISABLED
@@ -278,16 +400,19 @@ func select_agent(id: String) -> void:
 		agent_cameras[_capture_actor].cull_mask=WORLD|WALLS|BODIES|(CAPTURE_BODY if _capture_actor==selected_agent else SELECTED_BODY)
 	_sync_human_camera()
 	_update_selection()
+	if _use_proxies:_update_proxy_instances()
 
 func set_first_person(value: bool) -> void:
 	first_person = value
+	_drag = 0
 	if is_instance_valid(observer_viewport):observer_viewport.render_target_update_mode=SubViewport.UPDATE_DISABLED if value else SubViewport.UPDATE_ALWAYS
 	if is_instance_valid(human_viewport):human_viewport.render_target_update_mode=SubViewport.UPDATE_ALWAYS if value else SubViewport.UPDATE_DISABLED
 	_sync_human_camera()
 
 func set_quality(preset: String) -> void:
 	_quality = preset
-	var mode: int = Viewport.MSAA_DISABLED if preset == "low" else Viewport.MSAA_2X
+	var restrained := preset=="low" or (OS.has_feature("web") and preset=="medium")
+	var mode: int = Viewport.MSAA_DISABLED if restrained else Viewport.MSAA_2X
 	if is_instance_valid(observer_viewport):
 		observer_viewport.msaa_3d = mode
 	for viewport in agent_viewports.values():
@@ -295,16 +420,23 @@ func set_quality(preset: String) -> void:
 	if is_instance_valid(human_viewport):human_viewport.msaa_3d=mode
 	set_display_size(_display_size)
 	for light in _content.find_children("*","DirectionalLight3D",true,false):
-		if light.name=="Sun":light.shadow_enabled=preset!="low"
+		if light.name=="Sun":light.shadow_enabled=not restrained
+		elif light.name=="Fill":light.visible=not OS.has_feature("web") or preset=="high"
+	if _residence_lighting != null:
+		_residence_lighting.set_quality(preset)
+	_update_observer_lod()
+
+func set_render_scale(value: float) -> void:
+	_render_scale=clampf(value,0.5,1.0)
+	set_display_size(_display_size)
 
 func set_display_size(value:Vector2i) -> void:
-	_display_size=Vector2i(maxi(320,value.x),maxi(240,value.y))
-	var limit:Vector2i={"low":Vector2i(1280,720),"medium":Vector2i(1920,1080),"high":Vector2i(2560,1440)}.get(_quality,Vector2i(1920,1080))
-	var factor:float=minf(1.0,minf(float(limit.x)/_display_size.x,float(limit.y)/_display_size.y))
-	var pixels:=Vector2i(maxi(320,roundi(_display_size.x*factor)),maxi(240,roundi(_display_size.y*factor)))
-	if is_instance_valid(observer_viewport):observer_viewport.size=pixels
-	if is_instance_valid(human_viewport):human_viewport.size=pixels
-	_update_observer()
+	_display_size=value.max(Vector2i(2,2))
+	var pixels:=Vector2i(roundi(_display_size.x*_render_scale),roundi(_display_size.y*_render_scale)).max(Vector2i(2,2))
+	if is_instance_valid(observer_viewport) and observer_viewport.size!=pixels:
+		observer_viewport.size=pixels
+		if not _user_camera:_fit_observer()
+	if is_instance_valid(human_viewport) and human_viewport.size!=pixels:human_viewport.size=pixels
 
 func appearance_capabilities() -> Dictionary:
 	return {"faces":6,"hairs":6,"outfits":4,"shoes":2}
@@ -335,14 +467,75 @@ func _sync_human_camera() -> void:
 	human_camera.fov=agent_cameras[selected_agent].fov
 	human_camera.cull_mask=WORLD|WALLS|BODIES|CAPTURE_BODY
 
-func focus_position(point:Array) -> void:
+func focus_position(point: Array, smooth: bool = false) -> void:
 	if point.size()<2:return
-	_focus=Vector3(float(point[0]),0,float(point[1]));follow_selected=false;_user_camera=true;_zoom=minf(_zoom,18.0);_update_observer()
+	_set_focus(Vector3(float(point[0]),0,float(point[1])),18.0,smooth)
+
+func frame_story_start() -> void:
+	if not agent_nodes.has(selected_agent):return
+	_perspective = true
+	_yaw = -0.72
+	_elevation = 25.0
+	_zoom = 5.5
+	_focus = _resident_focus()
+	_focus_goal = _focus
+	_user_camera = true
+	follow_selected = true
+	_update_observer()
+
+func toggle_overview() -> void:
+	if not _overview_return.is_empty():
+		restore_camera(_overview_return)
+		return
+	var previous := snapshot_camera()
+	set_first_person(false)
+	show_map()
+	_overview_return = previous
 
 func show_map() -> void:
-	follow_selected=false;_user_camera=true
+	follow_selected=false;_centering=false;_user_camera=false
+	_perspective = false
+	_overview_return = {}
+	_yaw=-0.48;_elevation=51.0
 	if _fit_bounds.size()==4:_focus=Vector3((float(_fit_bounds[0])+float(_fit_bounds[1]))*0.5,0,(float(_fit_bounds[2])+float(_fit_bounds[3]))*0.5)
+	_update_observer()
 	_fit_observer()
+
+func snapshot_camera() -> Dictionary:
+	return {"focus":_focus,"yaw":_yaw,"elevation":_elevation,"zoom":_zoom,"follow":follow_selected,"first_person":first_person,"user_camera":_user_camera,"perspective":_perspective,"overview_return":_overview_return.duplicate(true)}
+
+func restore_camera(saved: Dictionary) -> void:
+	if saved.is_empty():return
+	_focus=saved.focus;_yaw=saved.yaw;_elevation=saved.elevation;_zoom=saved.zoom
+	_user_camera=saved.user_camera;follow_selected=saved.follow;_centering=false
+	_perspective = bool(saved.get("perspective",false))
+	_overview_return = saved.get("overview_return",{}).duplicate(true)
+	set_first_person(bool(saved.first_person))
+	_update_observer()
+
+func display_agent_positions() -> Dictionary:
+	var points := {}
+	for id in agent_nodes:
+		var position: Vector3 = agent_nodes[id].position
+		points[id] = Vector2(position.x,position.z)
+	return points
+
+func camera_map_state() -> Dictionary:
+	var camera:=human_camera if first_person else observer_camera
+	if not is_instance_valid(camera):return {}
+	var footprint:=PackedVector2Array()
+	if not first_person:
+		var size:=Vector2(observer_viewport.size)
+		for corner in [Vector2.ZERO,Vector2(size.x,0),size,Vector2(0,size.y)]:
+			var floor_point:=_screen_ground(corner)
+			footprint.append(Vector2(floor_point.x,floor_point.z))
+	var center:=camera.global_position if first_person else _focus
+	return {"position":Vector2(center.x,center.z),"heading":camera.global_rotation.y,"footprint":footprint,"following":follow_selected,"overview":not _overview_return.is_empty()}
+
+func reset_action_feedback() -> void:
+	_action_feedback.clear()
+	_visual_event_cursor=-1
+	_label_timer=0.0
 
 func freeze_presentation(value: bool) -> void:
 	set_process(not value)
@@ -389,47 +582,101 @@ func enrich_observation(id: String, observation: Dictionary) -> Dictionary:
 	result["mock_view"] = filtered
 	return result
 
-func handle_view_input(event: InputEvent, _size: Vector2 = Vector2.ZERO) -> void:
+func handle_view_input(event: InputEvent, display: Vector2 = Vector2.ZERO) -> void:
+	if first_person or display.x <= 0 or display.y <= 0:
+		return
+	var source_size := Vector2(observer_viewport.size)
+	var scale := source_size / display
 	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed and not first_person:
-			var source_size:=Vector2(observer_viewport.size)
-			var factor: float=minf(_size.x/source_size.x,_size.y/source_size.y) if _size.x>0 and _size.y>0 else 1.0
-			var offset: Vector2=(_size-source_size*factor)*0.5
-			var point: Vector2=(event.position-offset)/factor
-			var nearest: String=""; var closest: float=40.0
+		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			var factor := minf(display.x / source_size.x, display.y / source_size.y)
+			var offset := (display - source_size * factor) * 0.5
+			if not Rect2(offset, source_size * factor).has_point(event.position):
+				return
+			var nearest := ""
+			var closest := 24.0
 			for id in agent_nodes:
-				var body_point: Vector3=agent_nodes[id].position+Vector3(0,1.0,0)
-				if observer_camera.is_position_behind(body_point):continue
-				var distance: float=observer_camera.unproject_position(body_point).distance_to(point)
-				if distance<closest:closest=distance;nearest=str(id)
-			if not nearest.is_empty():agent_picked.emit(nearest)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
-			_user_camera=true
-			_zoom = maxf(7.0, _zoom * 0.9)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
-			_user_camera=true
-			_zoom = minf(140.0, _zoom * 1.1)
+				var body_point: Vector3 = agent_nodes[id].position + Vector3.UP
+				if observer_camera.is_position_behind(body_point):
+					continue
+				var projection := observer_camera.unproject_position(body_point) * factor + offset
+				var distance := projection.distance_to(event.position)
+				if distance < closest:
+					closest = distance
+					nearest = str(id)
+			if not nearest.is_empty():
+				agent_picked.emit(nearest)
+		elif event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] and event.pressed:
+			var point: Vector2 = event.position * scale
+			var anchor := _screen_ground(point)
+			var zoom_factor := 0.88 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / 0.88
+			_user_camera = true
+			_zoom = clampf(_zoom * zoom_factor, 5.5, maxf(80.0, _overview_zoom * 1.08))
+			_update_observer()
+			if not follow_selected and not _centering:
+				_focus = _clamp_focus(_focus + anchor - _screen_ground(point))
+				_update_observer()
 		elif event.button_index in [MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
 			_drag = event.button_index if event.pressed else 0
-		_update_observer()
 	elif event is InputEventMouseMotion and _drag != 0:
-		_user_camera=true
-		follow_selected = false
+		var mask := MOUSE_BUTTON_MASK_RIGHT if _drag == MOUSE_BUTTON_RIGHT else MOUSE_BUTTON_MASK_MIDDLE
+		if not (event.button_mask & mask):
+			_drag = 0
+			return
+		_user_camera = true
 		if _drag == MOUSE_BUTTON_RIGHT:
 			_yaw -= event.relative.x * 0.006
-			_elevation = clampf(_elevation + event.relative.y * 0.15, 28, 82)
+			_elevation = clampf(_elevation + event.relative.y * 0.15, 25.0 if _perspective else 32.0, 82.0)
 		else:
-			var right := Vector3(cos(_yaw),0,-sin(_yaw))
-			var back := Vector3(sin(_yaw),0,cos(_yaw))
-			_focus += (-right * event.relative.x - back * event.relative.y) * _zoom * 0.0015
+			follow_selected = false
+			_centering = false
+			var current: Vector2 = event.position * scale
+			var previous: Vector2 = current - event.relative * scale
+			_focus = _clamp_focus(_focus + _screen_ground(previous) - _screen_ground(current))
 		_update_observer()
 
 func focus_agent() -> void:
 	if agent_nodes.has(selected_agent):
-		_focus = agent_nodes[selected_agent].position
-		_zoom=minf(_zoom,8.0);_user_camera=true
+		center_agent()
 		follow_selected = true
-		_update_observer()
+
+func center_agent() -> void:
+	if agent_nodes.has(selected_agent):
+		_set_focus(_resident_focus(), 13.0, true)
+
+func _resident_focus() -> Vector3:
+	if _seat_motion.has(selected_agent):
+		return agent_pose_nodes[selected_agent].global_position + Vector3.UP * 0.82
+	return agent_nodes[selected_agent].position + Vector3.UP * 0.88
+
+func _set_focus(point: Vector3, zoom_limit: float, smooth: bool) -> void:
+	if not _overview_return.is_empty():
+		restore_camera(_overview_return)
+		set_first_person(false)
+		smooth = false
+	follow_selected = false
+	_focus_goal = _clamp_focus(point)
+	_centering = smooth
+	_user_camera = true
+	_zoom = minf(_zoom, zoom_limit)
+	if not smooth:
+		_focus = _focus_goal
+	_update_observer()
+
+func _clamp_focus(point: Vector3) -> Vector3:
+	if _fit_bounds.size() != 4:
+		return point
+	var margin := minf(_zoom * 0.12, 8.0)
+	var x := clampf(point.x, float(_fit_bounds[0]) - margin, float(_fit_bounds[1]) + margin)
+	var z := clampf(point.z, float(_fit_bounds[2]) - margin, float(_fit_bounds[3]) + margin)
+	return Vector3(x, point.y, z)
+
+func _screen_ground(point: Vector2) -> Vector3:
+	var start := observer_camera.project_ray_origin(point)
+	var direction := observer_camera.project_ray_normal(point)
+	if direction.y >= -0.001 or start.y <= 0.0:
+		return Vector3(_focus.x,0.0,_focus.z)
+	return start + direction * (-start.y / direction.y)
 
 func prepare_device_screen(title: String, body: String) -> void:
 	if is_instance_valid(_screen_title):
@@ -443,7 +690,9 @@ func capture_device_screen() -> Image:
 func preview_character(data: Dictionary) -> Texture2D:
 	if not is_instance_valid(_portrait):_portrait=PortraitStage.new();add_child(_portrait)
 	_portrait.resume()
-	return _portrait.update_appearance(data)
+	var texture: Texture2D = _portrait.update_appearance(data)
+	_portrait.preview_conversation(_faces.get(str(data.get("id", ""))), _face_clock)
+	return texture
 
 func suspend_character_preview() -> void:
 	if is_instance_valid(_portrait):_portrait.suspend()
@@ -451,79 +700,143 @@ func suspend_character_preview() -> void:
 func handle_character_preview_input(event: InputEvent) -> void:
 	if is_instance_valid(_portrait):_portrait.handle_input(event)
 
-func _environment() -> void:
+func _environment(palette_id: String) -> void:
+	var palette := Art.palette(palette_id)
 	var node := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("293c47")
+	env.background_color = palette.background
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("dce5ed")
-	env.ambient_light_energy = 0.36
+	env.ambient_light_color = palette.ambient
+	env.ambient_light_energy = palette.ambient_energy
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	var residence := palette_id == "warm"
+	if residence:
+		_residence_environment(env)
 	node.environment = env
 	_content.add_child(node)
 	var sun := DirectionalLight3D.new()
 	sun.name="Sun"
-	sun.rotation_degrees = Vector3(-48, -32, 0)
-	sun.light_color = Color("ffe5c2")
-	sun.light_energy = 0.52
+	sun.rotation_degrees = palette.sun_rotation
+	sun.light_color = palette.key
+	sun.light_energy = palette.key_energy
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 48
+	sun.directional_shadow_max_distance = 72
+	sun.light_angular_distance = 1.7
+	if residence:
+		# Regular filtering keeps the contact shadows stable on skinned cloth.
+		sun.light_angular_distance = 0.0
+		sun.directional_shadow_max_distance = 96.0
 	_content.add_child(sun)
 	var fill := DirectionalLight3D.new()
+	fill.name="Fill"
 	fill.rotation_degrees = Vector3(-48, 145, 0)
-	fill.light_color = Color("aac6e8")
-	fill.light_energy = 0.1
+	fill.light_color = palette.fill
+	fill.light_energy = palette.fill_energy
+	if residence:
+		fill.rotation_degrees = Vector3(-32.0, 133.0, 0.0)
 	_content.add_child(fill)
+	if residence:
+		_residence_lighting = ResidenceLighting.new()
+		_residence_lighting.configure(env, sun, fill)
+
+func _residence_environment(environment: Environment) -> void:
+	var material := ProceduralSkyMaterial.new()
+	material.sky_top_color = Color("6997b9")
+	material.sky_horizon_color = Color("c7ced0")
+	material.ground_horizon_color = Color("c0c7c9")
+	material.ground_bottom_color = Color("505c5d")
+	material.sky_curve = .16
+	material.ground_curve = .11
+	material.sun_angle_max = 14.0
+	var sky := Sky.new()
+	sky.sky_material = material
+	sky.radiance_size = Sky.RADIANCE_SIZE_128
+	environment.sky = sky
+	environment.background_mode = Environment.BG_SKY
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.ambient_light_color = Color("dedbd4")
+	environment.ambient_light_energy = .42
+	environment.ambient_light_sky_contribution = .16
+	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	environment.fog_enabled = true
+	environment.fog_density = .0008
+	environment.fog_light_color = Color("abbabe")
+	environment.fog_sky_affect = 0.0
+	if RenderingServer.get_current_rendering_method() == "forward_plus":
+		environment.tonemap_mode = Environment.TONE_MAPPER_AGX
+		environment.ssao_enabled = true
+		environment.ssao_radius = 1.25
+		environment.ssao_intensity = 1.45
+		environment.ssil_radius = 1.3
+		environment.ssil_intensity = 0.38
+	else:
+		environment.ambient_light_energy = .36
 
 func _build_map(geometry: Dictionary) -> void:
 	var bounds: Array = geometry.get("bounds", [-12,12,-9,9])
 	var width: float = float(bounds[1])-float(bounds[0])
 	var depth: float = float(bounds[3])-float(bounds[2])
 	var center := Vector3((float(bounds[0])+float(bounds[1]))*0.5,0,(float(bounds[2])+float(bounds[3]))*0.5)
-	_box(_content, Vector3(width+0.7,0.45,depth+0.7), center+Vector3(0,-0.28,0), Color("343b48"))
 	var palette:String=str(geometry.get("palette","teal"))
-	var palette_ground:Color={"warm":Color("bfa88d"),"blue":Color("9aaaaf")}.get(palette,Color("9eaaa1"))
-	var palette_trim:Color={"warm":Color("a06452"),"blue":Color("467286")}.get(palette,Color("47716e"))
+	var residence := palette == "warm"
+	if not residence:
+		_box(_content, Vector3(width+0.7,0.45,depth+0.7), center+Vector3(0,-0.28,0), Color("343b48"))
+	var art := Art.palette(palette)
+	var palette_trim:Color=art.trim
+	var dressing: Dictionary = ResidenceScenery.new().build(_content, geometry, WORLD, WALLS) if residence else {}
+	var roof_details: Dictionary = dressing.get("roof_details", {})
+	var room_facades: Dictionary = dressing.get("room_facades", {})
 	var floor_mesh: MeshInstance3D = _box(_content, Vector3(width,0.12,depth),center+Vector3(0,-0.04,0),Color("c9c2ad"))
-	floor_mesh.material_override = _surface_material("floor",palette_ground)
+	floor_mesh.material_override = _surface_material(str(art.ground_surface),art.ground)
+	if residence:
+		floor_mesh.material_override = ResidenceScenery.surface("stone_setts", Color("b2aba3"), .44)
+	var residence_wall: StandardMaterial3D
+	if residence:
+		residence_wall = ResidenceScenery.surface("lime_stucco", Color("d6bda3"), .95)
 	for wall in geometry.get("walls", []):
+		if dressing.get("walls_ready", false):
+			continue
 		var p: Array = wall.get("center",[0,0])
 		var s: Array = wall.get("size",[0.2,1.0])
 		var h: float = float(wall.get("height",3.0))
 		var wall_mesh := _box(_content,Vector3(float(s[0]),h,float(s[1])),Vector3(float(p[0]),h*0.5,float(p[1])),Color("c9c5b7"),WALLS)
-		wall_mesh.material_override = _surface_material("wall",Color("d4c8af") if palette=="warm" else Color("b9c6c9"))
+		wall_mesh.material_override = residence_wall if residence else _surface_material(str(art.wall_surface),art.wall)
 		_box(_content,Vector3(float(s[0])+0.06,0.22,float(s[1])+0.06),Vector3(float(p[0]),0.11,float(p[1])),palette_trim.darkened(0.28),WORLD)
 		_box(_content,Vector3(float(s[0])+0.07,0.08,float(s[1])+0.07),Vector3(float(p[0]),h-0.04,float(p[1])),palette_trim,WALLS)
 		_shape_facade(wall_mesh,geometry.get("rooms",[]),Vector2(float(p[0]),float(p[1])),Vector2(float(s[0]),float(s[1])),h,palette_trim,palette)
 	for door in geometry.get("doors", []):
 		var p: Array = door.get("center",[0,0])
 		var s: Array = door.get("size",[0.2,1.6])
+		if residence:
+			_build_residence_door(door,Vector2(float(p[0]),float(p[1])),Vector2(float(s[0]),float(s[1])))
+			continue
 		var pivot := Node3D.new()
 		pivot.position = Vector3(float(p[0]),0,float(p[1]))
 		_content.add_child(pivot)
 		var panel := _box(pivot,Vector3(float(s[0]),2.65,float(s[1])),Vector3(0,1.325,0),Color("8c6951"),WALLS)
-		panel.material_override = _surface_material("wood",Color("a17b56"),1.0)
+		var door_finish := "wood" if palette!="blue" else "enamel_panel"
+		panel.material_override = _surface_material(door_finish,palette_trim.lightened(0.10),1.25)
 		_box(pivot,Vector3(float(s[0])+0.04,0.28,float(s[1])*0.65),Vector3(0,1.6,0),Color("547e82"),WALLS)
 		_box(pivot,Vector3(0.08,0.09,0.24),Vector3(-float(s[0])*0.6,1.05,float(s[1])*0.32),Color("d5c292"),WALLS)
 		door_nodes[str(door.get("id", ""))] = pivot
 		_box(_content,Vector3(float(s[0])+0.15,0.05,float(s[1])+0.1),Vector3(float(p[0]),0.04,float(p[1])),Color("caa969"))
 	for prop in geometry.get("props", []):
-		_build_prop(prop)
+		_build_prop(prop, palette)
 	for room in geometry.get("rooms", []):
 		var pos: Array = room.get("center",[0,0])
 		var room_size: Array = room.get("size",[4,4])
 		var room_name: String = str(room.get("label",room.get("name","")))
 		var function:String=str(room.get("function",""))
-		var base_material:String="floor"
-		if function in ["bedroom","common","shop"] or palette=="warm":base_material="wood"
-		if function in ["medical","kitchen","lab"]:base_material="tile"
-		if palette=="blue" and function in ["workshop","arrival","evacuation","comms"]:base_material="metal"
-		if palette=="blue" and function in ["bedroom","common","supply"]:base_material="tile"
-		var tint:Color={"bedroom":Color("dcc3a0"),"medical":Color("acbfc3"),"kitchen":Color("d2c4a4"),"lab":Color("a9bbc6"),"reserve":Color("b6b4ad"),"supply":Color("c3afa0")}.get(function,Color("bdc6ba"))
+		var base_material:=Art.room_surface(palette,function)
+		var tint:Color=art.room_floor_tints.get(function,Color("c6c8bd"))
 		var room_floor := _box(_content,Vector3(float(room_size[0])-0.25,0.018,float(room_size[1])-0.25),Vector3(float(pos[0]),0.035,float(pos[1])),Color.WHITE)
 		room_floor.material_override = _surface_material(base_material,tint)
-		if function in ["common","bedroom"]:
+		if residence and function in ["common", "bedroom", "shop"]:
+			var floor_finish := "courtyard_paver" if function == "shop" else "oak_planks"
+			var floor_tone := Color("c0c5b9") if function == "shop" else Color("c8b69c")
+			room_floor.material_override = ResidenceScenery.surface(floor_finish, floor_tone, .52)
+		if function in ["common","bedroom"] and palette!="blue" and not dressing.get("rugs_ready", false):
 			var rug_width:=minf(float(room_size[0])*.64,5.0)
 			var rug_depth:=minf(float(room_size[1])*.36,3.4)
 			var rug_center:=Vector3(float(pos[0]),.05,float(pos[1])-.4)
@@ -534,7 +847,85 @@ func _build_map(geometry: Dictionary) -> void:
 				for stripe in [0.08,0.17]:
 					var trim:=_box(_content,Vector3(.045,.004,rug_depth-.05),rug_center+Vector3(side*(rug_width*.5-stripe),.007,0),Color.WHITE)
 					trim.material_override=_surface_material("fabric",Color("b6a180"))
-		_label(_content,str(room.get("label",room.get("name",""))),Vector3(float(pos[0]),0.1,float(pos[1])),Color("dfe0c7"),0.009,true)
+		var room_id := str(room.get("id", ""))
+		_build_ceiling(Vector2(float(pos[0]),float(pos[1])),Vector2(float(room_size[0]),float(room_size[1])),palette,roof_details.get(room_id, []),room_facades.get(room_id, []))
+		_label(_content,room_name,Vector3(float(pos[0]),0.1,float(pos[1])),Color("e6e3cc"),0.010,true)
+	_batch_architecture()
+	if residence:
+		for normal: Vector2 in dressing.facades:
+			_facades.append({"normal": normal, "meshes": dressing.facades[normal]})
+		_residence_canopies = dressing.canopies
+	else:
+		Art.decorate_site(_content,geometry,WORLD)
+
+func _build_residence_door(door: Dictionary, at: Vector2, extent: Vector2) -> void:
+	var along_x := extent.x > extent.y
+	var across := Vector3.RIGHT if along_x else Vector3.BACK
+	var depth := Vector3.BACK if along_x else Vector3.RIGHT
+	var width := maxf(extent.x,extent.y)
+	var height := float(door.get("height",2.8))
+	var center := Vector3(at.x,0,at.y)
+	var leaf := Node3D.new()
+	leaf.position = center
+	leaf.set_meta("closed_position",center)
+	leaf.set_meta("slide_offset",across * (width + .025))
+	_content.add_child(leaf)
+	var frame_color := Color("51483c")
+	var wood_color := Color("77654b")
+	var panel := _box(leaf,across * width + depth * .087 + Vector3.UP * (height - .15),Vector3.UP * (height * .5 - .066),wood_color,WALLS)
+	panel.material_override = _surface_material("wood",wood_color,.84)
+	for side: float in [-1.0,1.0]:
+		var face := side * depth
+		_box(leaf,across * (width - .32) + depth * .018 + Vector3.UP * .64,Vector3.UP * (height - .77) + face * .049,Color("423f39"),WALLS)
+		_box(leaf,across * (width - .44) + depth * .019 + Vector3.UP * .54,Vector3.UP * (height - .77) + face * .061,Color("687672"),WALLS)
+		_box(leaf,across * .16 + depth * .07 + Vector3.UP * .025,across * (-width * .5 + .20) + Vector3.UP * 1.06 + face * .076,Color("b3a087"),WALLS)
+		var jamb_size := across * .094 + depth * .22 + Vector3.UP * height
+		_box(_content,jamb_size,center + across * (side * width * .5) + Vector3.UP * height * .5,frame_color,WALLS)
+	var lintel := across * (width + .10) + depth * .22 + Vector3.UP * .15
+	_box(_content,lintel,center + Vector3.UP * (height - .075),frame_color,WALLS)
+	var threshold := across * (width + .10) + depth * .38 + Vector3.UP * .034
+	_box(_content,threshold,center + Vector3.UP * .026,Color("a49177"),WORLD)
+	door_nodes[str(door.id)] = leaf
+
+func _batch_architecture() -> void:
+	var facade_normals := {}
+	for facade in _facades:
+		for face in facade.meshes:
+			facade_normals[face] = facade.normal
+	var groups := {}
+	for child in _content.get_children():
+		var node := child as MeshInstance3D
+		if node == null or not node.mesh is BoxMesh or node.has_meta("room_roof"):
+			continue
+		var normal: Vector2 = facade_normals.get(node,Vector2.ZERO)
+		var section := Vector2i(floori(node.position.x/36.0),floori(node.position.z/36.0))
+		var key := [node.material_override, node.layers, node.cast_shadow, normal, section]
+		if not groups.has(key):groups[key]=[]
+		groups[key].append(node)
+	var shared_box := BoxMesh.new()
+	for key in groups:
+		var nodes: Array = groups[key]
+		if nodes.size() < 3:
+			continue
+		var instances := MultiMesh.new()
+		instances.transform_format=MultiMesh.TRANSFORM_3D
+		instances.mesh=shared_box
+		instances.instance_count=nodes.size()
+		for index in nodes.size():
+			var node: MeshInstance3D = nodes[index]
+			var size: Vector3 = node.mesh.size
+			instances.set_instance_transform(index,node.transform.scaled_local(size))
+			node.free()
+		var batch := MultiMeshInstance3D.new()
+		batch.name="ArchitectureBatch"
+		batch.layers=key[1]
+		batch.cast_shadow=key[2]
+		batch.material_override=key[0]
+		batch.multimesh=instances
+		_content.add_child(batch,true)
+		if key[3] != Vector2.ZERO:_facades.append({"normal":key[3],"meshes":[batch]})
+	for facade in _facades:
+		facade.meshes=facade.meshes.filter(func(node):return is_instance_valid(node))
 
 # Keep physical walls in each agent camera. The observer sees the far walls of
 # each room, including their fixtures, and a low sill along the near side.
@@ -551,40 +942,161 @@ func _shape_facade(wall:MeshInstance3D, rooms:Array, at:Vector2, size:Vector2, h
 		if not along_x and absf(absf(delta.x)-half.x)<.18 and absf(delta.y)<=half.y:
 			outward=Vector2(signf(delta.x),0);room_label=str(room.get("label",""));break
 	if outward==Vector2.ZERO:return
-	var faces:Array=[wall]
-	var length:float=maxf(size.x,size.y)
-	var base:=Vector3(at.x,0,at.y)
-	var normal:=Vector3(outward.x,0,outward.y)
-	var tangent:=Vector3(1,0,0) if along_x else Vector3(0,0,1)
-	var band:Vector3=Vector3(size.x+.024,.13,size.y+.024)
-	faces.append(_box(_content,band,base+Vector3.UP*.91,accent,WALLS))
-	# Flush panels and transoms stay within the building's collision footprint.
-	if length>3.8:
-		var span:=minf(length*.62,4.8)
-		var frame_size:=Vector3(span,1.08,.055) if along_x else Vector3(.055,1.08,span)
-		var centre:=base+Vector3.UP*(h*.65)-normal*.128
-		faces.append(_box(_content,frame_size,centre,accent.darkened(.43),WALLS))
-		var pane_size:=Vector3(span*.47,.91,.025) if along_x else Vector3(.025,.91,span*.47)
-		for side in [-1,1]:faces.append(_box(_content,pane_size,centre-normal*.04+tangent*float(side)*span*.245,Color("819399") if palette!="warm" else Color("9bafad"),WALLS))
-		var bar:=Vector3(span,.043,.034) if along_x else Vector3(.034,.043,span)
-		faces.append(_box(_content,bar,centre-normal*.063+Vector3.UP*(.13 if palette=="warm" else .31),accent.darkened(.37),WALLS))
-		if length>8.7:
-			var plaque:=Vector3(1.38,.41,.044) if along_x else Vector3(.044,.41,1.38)
-			var mount:=centre+tangent*(span*.5+.97)-normal*.03
-			faces.append(_box(_content,plaque,mount,accent.darkened(.5),WALLS))
-			var sign:=Label3D.new();sign.text=room_label;sign.layers=WALLS;sign.font_size=32;sign.pixel_size=.0035;sign.width=345;sign.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;sign.outline_size=0;sign.double_sided=false;sign.modulate=Color("efe6cb")
-			sign.position=mount-normal*.033;sign.rotation.y=atan2(-normal.x,-normal.z);_content.add_child(sign);faces.append(sign)
+	var faces: Array = [wall]
+	var length := maxf(size.x,size.y)
+	var normal := Vector3(outward.x,0,outward.y)
+	var tangent := Vector3.RIGHT if along_x else Vector3.BACK
+	var base := Vector3(at.x,0,at.y) - normal * (minf(size.x,size.y)*0.5)
+	var cap := Vector3(size.x+0.045,0.14,size.y+0.045)
+	var band := _box(_content,cap,Vector3(at.x,h-0.14,at.y),accent.darkened(0.12),WALLS)
+	band.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	faces.append(band)
+	if length >= 3.0:
+		match palette:
+			"warm":
+				var window_width := minf(1.82,length*0.38)
+				var exterior := base + normal * minf(size.x,size.y)
+				var surround := _facade_piece(exterior + Vector3.UP * .28,-normal,along_x,length,.56,.074,Color("a39b8d"))
+				surround.material_override = _surface_material("concrete_slab",Color("a39b8d"),1.18)
+				faces.append(surround)
+				for side: float in [-1.0,1.0]:
+					var center := base + tangent * (side*length*0.24) + Vector3.UP*(h*0.61)
+					_window_trim(faces,center,normal,tangent,along_x,window_width,1.27,Color("4e4a40"),Color("75817a"))
+					_residence_exterior_window(faces,center + normal * minf(size.x,size.y),normal,tangent,along_x,window_width)
+			"blue":
+				var panel_width := minf(3.45,length*0.59)
+				var center := base + Vector3.UP*(h*0.59)
+				faces.append(_facade_piece(center,normal,along_x,panel_width,1.08,0.044,accent.darkened(0.48)))
+				faces.append(_facade_piece(center+Vector3.UP*0.31,normal,along_x,panel_width*0.92,0.032,0.069,Color("bd9c65")))
+				faces.append(_facade_piece(center-Vector3.UP*0.29,normal,along_x,panel_width*0.93,0.095,0.068,Color("788a90")))
+				for side: float in [-1.0,1.0]:
+					var pillar := base + tangent*(side*length*0.39)+Vector3.UP*(h*0.50)
+					faces.append(_facade_piece(pillar,normal,along_x,0.15,h*0.84,0.115,Color("556771")))
+			_:
+				var span := minf(length*0.63,4.4)
+				var center := base+Vector3.UP*(h*0.70)
+				_window_trim(faces,center,normal,tangent,along_x,span,0.80,accent.darkened(0.49),Color("789292"))
+				faces.append(_facade_piece(base+Vector3.UP*0.91,normal,along_x,length,.12,.062,accent))
+	if length >= 6.5 and not room_label.is_empty():
+		var mount := base+tangent*(length*.37)+Vector3.UP*(h*.45)
+		faces.append(_facade_piece(mount,normal,along_x,1.48,.38,.066,accent.darkened(.52)))
+		var sign:=Label3D.new()
+		sign.text=room_label;sign.layers=WALLS;sign.font_size=32;sign.pixel_size=.0035
+		sign.width=345;sign.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+		sign.outline_size=0;sign.double_sided=false;sign.modulate=Color("efe6cb")
+		sign.position=mount-normal*.072;sign.rotation.y=atan2(-normal.x,-normal.z)
+		_content.add_child(sign);faces.append(sign)
 	_facades.append({"normal":outward,"meshes":faces})
 
+func _residence_exterior_window(faces: Array, center: Vector3, outward: Vector3,
+		tangent: Vector3, along_x: bool, width: float) -> void:
+	var recess := Color("44423d")
+	var frame := Color("9b8c79")
+	var normal := -outward
+	faces.append(_facade_piece(center, normal, along_x, width + .22, 1.44, .051, frame))
+	faces.append(_facade_piece(center, normal, along_x, width, 1.27, .062, recess))
+	for side: float in [-1.0, 1.0]:
+		var pane := center + tangent * side * width * .237 + Vector3.UP * .026
+		var pane_color := Color("6f8075") if side < 0.0 else Color("768e86")
+		var glass := _facade_piece(pane,normal,along_x,width*.43,1.105,.073,pane_color)
+		var key := "residence_glass_" + pane_color.to_html()
+		if not _material_cache.has(key):
+			var material := _material(pane_color).duplicate() as StandardMaterial3D
+			material.metallic = .17
+			material.metallic_specular = .67
+			material.roughness = .26
+			_material_cache[key] = material
+		glass.material_override = _material_cache[key]
+		faces.append(glass)
+	var crossbar := center - Vector3.UP * .12
+	faces.append(_facade_piece(crossbar, normal, along_x, width, .052, .090, recess))
+	faces.append(_facade_piece(center - Vector3.UP * .73, normal, along_x, width + .39, .10, .24, frame))
+	faces.append(_facade_piece(center + Vector3.UP * .72, normal, along_x, width + .29, .11, .22, frame))
+
+func _facade_piece(center: Vector3, normal: Vector3, along_x: bool, width: float, height: float, depth: float, color: Color) -> MeshInstance3D:
+	var dimensions := Vector3(width,height,depth) if along_x else Vector3(depth,height,width)
+	var piece := _box(_content,dimensions,center-normal*depth*.52,color,WALLS)
+	piece.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return piece
+
+func _window_trim(faces: Array, center: Vector3, normal: Vector3, tangent: Vector3, along_x: bool, width: float, height: float, frame: Color, glass: Color) -> void:
+	faces.append(_facade_piece(center,normal,along_x,width,height,.055,frame))
+	for side: float in [-1.0,1.0]:
+		var pane := center+tangent*(side*width*.245)+Vector3.UP*.015
+		faces.append(_facade_piece(pane,normal,along_x,width*.45,height*.80,.063,glass))
+	faces.append(_facade_piece(center-Vector3.UP*(height*.52),normal,along_x,width*1.04,.07,.20,frame.lightened(.18)))
+
+func _build_ceiling(at: Vector2, size: Vector2, palette: String, details: Array, facades: Array) -> void:
+	var color := Color("777e80") if palette=="blue" else (Color("a39b86") if palette=="warm" else Color("8a9288"))
+	var height := 3.05 if palette=="blue" else 3.0
+	if palette == "warm":
+		var roof := _box(_content,Vector3(size.x+.52,.24,size.y+.52),Vector3(at.x,2.81,at.y),Color("756758"),WALLS)
+		roof.material_override = _surface_material("wall",Color("c6b8a6"),.76)
+		roof.set_meta("room_roof",true)
+		var bounds := roof.global_transform * roof.get_aabb()
+		for mesh: GeometryInstance3D in details:
+			bounds = bounds.merge(mesh.global_transform * mesh.get_aabb())
+		var room := Rect2(at-size*.5,size)
+		var volume := AABB(Vector3(room.position.x, 0.0, room.position.y), Vector3(room.size.x, bounds.end.y, room.size.y))
+		_residence_roofs.append({"mesh":roof, "details":details, "room":room, "bounds":bounds,
+			"volume":volume, "facades":facades, "visible":null})
+		return
+	var ceiling := _box(_content,Vector3(size.x+.09,.10,size.y+.09),Vector3(at.x,height,at.y),color,WALLS)
+	ceiling.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ceiling.material_override=_surface_material("enamel_panel" if palette=="blue" else "wall",color)
+	var fixture := _material(Color("dadaaa") if palette=="warm" else Color("b9cbd0")).duplicate() as StandardMaterial3D
+	fixture.emission_enabled=true
+	fixture.emission=fixture.albedo_color
+	fixture.emission_energy_multiplier=.45
+	for side: float in [-1.0,1.0]:
+		var x := at.x+side*size.x*.23
+		var mounting := Vector3(x,height-.078,at.y)
+		var casing := _box(_content,Vector3(2.95,.10,.34),mounting,color.darkened(.45),WALLS)
+		var diffuser := _box(_content,Vector3(2.76,.034,.265),mounting-Vector3.UP*.058,Color.WHITE,WALLS)
+		casing.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		diffuser.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		diffuser.material_override=fixture
+
 func _update_facades() -> void:
-	if is_finite(_last_facade_yaw) and is_equal_approx(_last_facade_yaw,_yaw):return
+	var sight_target := _resident_focus() if follow_selected and agent_nodes.has(selected_agent) else _focus
+	var focus_xz := Vector2(sight_target.x,sight_target.z)
+	var camera_origin := observer_camera.global_position
+	var direction := Vector2(sin(_yaw),cos(_yaw))
+	var yaw_changed := not is_finite(_last_facade_yaw) or not is_equal_approx(_last_facade_yaw,_yaw)
+	# The observer can cut away overhead obstructions. Private cameras always see them.
+	for entry in _residence_roofs:
+		var area: Rect2 = entry.room
+		var roof: MeshInstance3D = entry.mesh
+		var bounds: AABB = entry.bounds
+		if not entry.facades.is_empty():
+			bounds = entry.volume
+		var visible_to_observer := _perspective and not area.grow(2.3).has_point(focus_xz) \
+			and bounds.grow(.5).intersects_segment(camera_origin,sight_target) == null
+		var layers := WALLS | CUTAWAY if visible_to_observer else WALLS
+		if roof.layers != layers:roof.layers = layers
+		for fixture: GeometryInstance3D in entry.details:
+			if fixture.layers != layers:fixture.layers = layers
+		if yaw_changed or entry.visible != visible_to_observer:
+			entry.visible = visible_to_observer
+			for facade: Dictionary in entry.facades:
+				var wall_layers := WALLS | CUTAWAY if visible_to_observer or facade.normal.dot(direction) < -0.12 else WALLS
+				for mesh: GeometryInstance3D in facade.meshes:
+					if mesh.layers != wall_layers:
+						mesh.layers = wall_layers
+	for entry: Dictionary in _residence_canopies:
+		var normal: Vector2 = entry.normal
+		var bounds: AABB = entry.bounds
+		var blocks_focus := _perspective and bounds.grow(.5).intersects_segment(camera_origin,sight_target) != null
+		var layers := WALLS | CUTAWAY if normal.dot(direction) < -.12 and not blocks_focus else WALLS
+		for mesh: GeometryInstance3D in entry.meshes:
+			if mesh.layers != layers:mesh.layers = layers
+	if not yaw_changed:return
 	_last_facade_yaw=_yaw
-	var direction:=Vector2(sin(_yaw),cos(_yaw))
 	for facade in _facades:
 		var layer:int=WALLS|CUTAWAY if facade.normal.dot(direction)<-0.12 else WALLS
 		for mesh in facade.meshes:mesh.layers=layer
 
-func _build_prop(prop: Dictionary) -> void:
+func _build_prop(prop: Dictionary, palette: String) -> void:
 	var kind: String = str(prop.get("kind", "table"))
 	var p: Array = prop.get("center",[0,0])
 	var s: Array = prop.get("size",[1.0,1.0])
@@ -594,8 +1106,13 @@ func _build_prop(prop: Dictionary) -> void:
 	root.position = Vector3(float(p[0]),0,float(p[1]))
 	root.rotation.y = deg_to_rad(float(prop.get("angle",0)))
 	_content.add_child(root)
-	if kind in ["terminal","shop"]:_service_signage(root,kind,Vector2(float(s[0]),float(s[1])),height)
-	var asset: Node3D = _instantiate_asset(kind)
+	if kind in ["terminal","shop"]:
+		_service_signage(root, kind, Vector2(float(s[0]), float(s[1])), height, palette == "warm" and kind == "shop")
+	var asset: Node3D
+	if palette == "warm":
+		asset = ResidenceScenery.replacement(kind, str(prop.get("id", "")))
+	if asset == null:
+		asset = _instantiate_asset(kind)
 	if asset != null:
 		root.add_child(asset)
 		_fit_asset(asset,Vector3(float(s[0]),height,float(s[1])))
@@ -621,7 +1138,7 @@ func _build_prop(prop: Dictionary) -> void:
 			mattress.material_override = fabric
 			_box(root,Vector3(float(s[0])*0.8,0.16,float(s[1])*0.23),Vector3(0,0.66,-float(s[1])*0.3),Color("ece9dd"))
 		"shelf", "locker", "cabinet":
-			for side in [-1.0,1.0]:
+			for side: float in [-1.0,1.0]:
 				_box(root,Vector3(0.08,height,float(s[1])),Vector3(side*(float(s[0])*0.5-0.04),height*0.5,0),Color("63797b"))
 			for level in range(4):
 				var shelf := _box(root,Vector3(float(s[0]),0.07,float(s[1])),Vector3(0,0.15+float(level)*(height-0.22)/3,0),Color("b09972"))
@@ -675,18 +1192,19 @@ func _table_details(root:Node3D, kind:String, footprint:Vector2, h:float) -> voi
 	var drink:=CylinderMesh.new();drink.radial_segments=16;drink.rings=1;drink.top_radius=.060;drink.bottom_radius=.060;drink.height=.004
 	_mesh(detail,drink,Vector3(.34,.122,.12),Color("503d35"))
 
-func _service_signage(parent: Node3D, kind: String, size: Vector2, height: float) -> void:
+func _service_signage(parent: Node3D, kind: String, size: Vector2, height: float, compact: bool) -> void:
 	# Printed plates live on the real device: no billboard, observer overlay or hidden state.
-	for side in 4:
+	for side in ([2] if compact else [0, 1, 2, 3]):
 		var face:=Node3D.new();face.name="PrintedServicePlate_%d"%side
 		face.rotation.y=float(side)*PI*0.5
 		var side_width:float=size.x if side%2==0 else size.y
 		var extent:float=size.y if side%2==0 else size.x
-		face.position=Vector3(sin(face.rotation.y)*(extent*0.5+0.025),height*0.77,cos(face.rotation.y)*(extent*0.5+0.025));parent.add_child(face)
-		var width:float=minf(side_width*0.94,1.15)
-		_box(face,Vector3(width,0.42,0.035),Vector3.ZERO,Color("1b343c"))
+		var offset := extent * 0.5 + (0.013 if compact else 0.025)
+		face.position=Vector3(sin(face.rotation.y)*offset,height*(0.56 if compact else 0.77),cos(face.rotation.y)*offset);parent.add_child(face)
+		var width:float=minf(side_width*0.94,0.86 if compact else 1.15)
+		_box(face,Vector3(width,0.24 if compact else 0.42,0.018 if compact else 0.035),Vector3.ZERO,Color("31443e") if compact else Color("1b343c"))
 		var label:=Label3D.new();label.name="PrintedServiceName";label.text="ПАЙКИ\nRATIONS" if kind=="terminal" else "МАГАЗИН\nSHOP"
-		label.position.z=0.021;label.font_size=64;label.pixel_size=width/300.0;label.modulate=Color("f2dfaa");label.outline_size=0;label.layers=WORLD
+		label.position.z=0.021;label.font_size=48 if compact else 64;label.pixel_size=width/(430.0 if compact else 300.0);label.modulate=Color("f2dfaa");label.outline_size=0;label.layers=WORLD
 		label.billboard=BaseMaterial3D.BILLBOARD_DISABLED;label.no_depth_test=false;label.double_sided=false;label.shaded=false;face.add_child(label)
 		if kind=="terminal":
 			# A static dispense hatch and illuminated physical push button identify the affordance.
@@ -697,10 +1215,10 @@ func _service_signage(parent: Node3D, kind: String, size: Vector2, height: float
 func _build_observer(geometry: Dictionary) -> void:
 	var window_size: Vector2i=Vector2i(get_viewport().get_visible_rect().size)
 	observer_viewport = _viewport("Observer",Vector2i(maxi(640,window_size.x),maxi(480,window_size.y)))
-	observer_viewport.render_target_update_mode=SubViewport.UPDATE_ALWAYS
+	observer_viewport.render_target_update_mode=SubViewport.UPDATE_DISABLED if first_person else SubViewport.UPDATE_ALWAYS
 	observer_camera=Camera3D.new()
 	observer_camera.projection=Camera3D.PROJECTION_ORTHOGONAL
-	observer_camera.cull_mask=WORLD|CUTAWAY|BODIES|CAPTURE_BODY|SELECTED_BODY|OVERLAY
+	observer_camera.cull_mask=WORLD|CUTAWAY|DISPLAY_BODY|DISTANT_BODY|OVERLAY
 	observer_camera.far=150
 	observer_viewport.add_child(observer_camera)
 	observer_camera.current=true
@@ -712,7 +1230,8 @@ func _build_observer(geometry: Dictionary) -> void:
 	_fit_bounds=bounds.duplicate()
 	_focus=Vector3((float(bounds[0])+float(bounds[1]))*0.5,0,(float(bounds[2])+float(bounds[3]))*0.5)
 	_zoom=25.0
-	_yaw=-0.48
+	_yaw=-0.48;_elevation=51.0
+	_update_observer()
 	set_display_size(_display_size)
 	_fit_observer()
 	if not get_viewport().size_changed.is_connected(_resize_observer):get_viewport().size_changed.connect(_resize_observer)
@@ -733,16 +1252,121 @@ func _fit_observer() -> void:
 				var vertical:float=delta.dot(observer_camera.global_basis.y)
 				min_x=minf(min_x,horizontal);max_x=maxf(max_x,horizontal);min_y=minf(min_y,vertical);max_y=maxf(max_y,vertical)
 	var aspect:float=float(observer_viewport.size.x)/float(observer_viewport.size.y)
-	_zoom=maxf(max_y-min_y,(max_x-min_x)/aspect)*1.16
+	_overview_zoom=maxf(max_y-min_y,(max_x-min_x)/aspect)*1.10
+	_zoom=_overview_zoom
 	_update_observer()
 
 func _update_observer() -> void:
 	if not is_instance_valid(observer_camera): return
-	_update_facades()
-	observer_camera.size=_zoom
+	var distance := 45.0
+	if _perspective:
+		var fov := 40.0
+		if observer_camera.projection!=Camera3D.PROJECTION_PERSPECTIVE:
+			observer_camera.set_perspective(fov,0.08,200.0)
+		distance = _zoom * 0.5 / tan(deg_to_rad(fov * 0.5))
+	else:
+		if observer_camera.projection!=Camera3D.PROJECTION_ORTHOGONAL:
+			observer_camera.set_orthogonal(_zoom,0.05,150.0)
+		observer_camera.size = _zoom
 	var e:=deg_to_rad(_elevation)
-	observer_camera.position=_focus+Vector3(sin(_yaw)*cos(e),sin(e),cos(_yaw)*cos(e))*45.0
+	observer_camera.position=_focus+Vector3(sin(_yaw)*cos(e),sin(e),cos(_yaw)*cos(e))*distance
 	observer_camera.look_at(_focus,Vector3.UP)
+	_update_facades()
+	_update_observer_lod()
+
+func _update_observer_lod() -> void:
+	# Private eyes retain detailed actors on their own layers at every zoom.
+	var population := agent_nodes.size()
+	var use_proxies := OS.has_feature("web") and _quality != "high" and population > 0 and (_zoom > 38.0 or population > 8)
+	if use_proxies==_use_proxies:return
+	_use_proxies=use_proxies
+	_near_observer.clear()
+	if _use_proxies and not is_instance_valid(_proxy_group):_create_proxies()
+	if is_instance_valid(_proxy_group):_proxy_group.visible=_use_proxies
+	for id in agent_nodes:
+		_restore_body_layer(str(id))
+	if _use_proxies:_update_proxy_instances()
+
+func _restore_body_layer(id: String) -> void:
+	var layer := SELECTED_BODY if id == selected_agent else BODIES
+	if id != selected_agent and id == _capture_actor and Engine.get_frames_drawn() <= _capture_frame + 1:
+		layer = CAPTURE_BODY
+	_set_body_layer(id, layer)
+
+func _update_near_observer() -> void:
+	var next: Dictionary = {}
+	if _zoom <= 38.0:
+		var candidates: Array[Dictionary] = []
+		for id in agent_nodes:
+			if id == selected_agent:continue
+			var point: Vector3 = agent_nodes[id].position + Vector3.UP
+			if not observer_camera.is_position_in_frustum(point):continue
+			# Retain nearby rigs through small movements at the detail boundary.
+			var distance := point.distance_squared_to(_focus) * (0.83 if _near_observer.has(id) else 1.0)
+			candidates.append({"id": id, "distance": distance})
+		candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.distance < b.distance)
+		for index in mini(WEB_CLOSE_RESIDENTS, candidates.size()):
+			next[candidates[index].id] = true
+	var previous := _near_observer
+	_near_observer = next
+	for id in previous:
+		if not next.has(id):_restore_body_layer(id)
+	for id in next:
+		if not previous.has(id):_restore_body_layer(id)
+
+func _create_proxies() -> void:
+	_proxy_group=Node3D.new()
+	_proxy_group.name="DistantResidents"
+	_content.add_child(_proxy_group)
+	var material:=StandardMaterial3D.new()
+	material.vertex_color_use_as_albedo=true
+	material.roughness=.9
+	var parts: Array[Vector3]=[Vector3(.21,.66,1),Vector3(.126,.265,1),Vector3(.078,.71,2),Vector3(.061,.54,2)]
+	for part in parts:
+		var shape:=CapsuleMesh.new()
+		shape.radius=part.x;shape.height=part.y;shape.radial_segments=8;shape.rings=3
+		shape.material=material
+		var instances:=MultiMesh.new()
+		instances.transform_format=MultiMesh.TRANSFORM_3D
+		instances.use_colors=true
+		instances.mesh=shape
+		instances.instance_count=agent_nodes.size()*int(part.z)
+		var proxy:=MultiMeshInstance3D.new()
+		proxy.layers=DISTANT_BODY
+		proxy.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		proxy.multimesh=instances
+		_proxy_group.add_child(proxy)
+		_proxies.append(instances)
+
+func _update_proxy_instances() -> void:
+	_update_near_observer()
+	var index:=0
+	var now:=Time.get_ticks_msec()*.012
+	for id in agent_nodes:
+		var node: Node3D=agent_nodes[id]
+		var transform:=node.transform
+		var data: Dictionary=_state.get("agents",{}).get(id,{})
+		if id==selected_agent or _near_observer.has(id):transform.origin.y=-150.0
+		elif not bool(data.get("alive",true)) or bool(data.get("sleeping",false)) or bool(data.get("unconscious",false)):
+			transform.basis=transform.basis*Basis(Vector3.RIGHT,PI*.5)
+			transform.origin.y+=.22
+		var height:=float(data.get("appearance",{}).get("height",1.0))
+		transform.basis=transform.basis.scaled(Vector3(1.0,height,1.0))
+		var clothing:=Color.from_string(str(data.get("color","83988b")),Color("83988b"))
+		var skin:=Color.from_string(str(data.get("skin","d9b497")),Color("d9b497"))
+		_proxy_part(0,index,transform,Vector3(0,1.08,0),0.0,clothing)
+		_proxy_part(1,index,transform,Vector3(0,1.53,0),0.0,skin)
+		var walking: bool=_animation_choices.get(id,"") in ["Walk_Loop","Crawl_Loop"]
+		var step:=sin(now+float(index)*1.9)*.28 if walking else 0.0
+		for limb in 2:
+			var side:=float(limb*2-1)
+			_proxy_part(2,index*2+limb,transform,Vector3(side*.112,.41,0),step*side,Color("34494d"))
+			_proxy_part(3,index*2+limb,transform,Vector3(side*.235,1.04,0),-step*side,clothing.darkened(.16))
+		index+=1
+
+func _proxy_part(part: int, index: int, transform: Transform3D, position: Vector3, pitch: float, color: Color) -> void:
+	_proxies[part].set_instance_transform(index,transform*Transform3D(Basis(Vector3.RIGHT,pitch),position))
+	_proxies[part].set_instance_color(index,color)
 
 func _build_agent(id: String, data: Dictionary) -> void:
 	var root:=Node3D.new(); root.name="Agent_"+id
@@ -764,8 +1388,7 @@ func _build_agent(id: String, data: Dictionary) -> void:
 	_meshes[id]=[]
 	_collect_meshes(pose,_meshes[id])
 	_set_body_layer(id,BODIES)
-	var marker:=Marker3D.new(); marker.position=Vector3(0.34,1.02,-0.24)
-	pose.add_child(marker); _held_markers[id]=marker
+	_bind_held_marker(id, pose)
 	_label(root,str(data.get("name",id)),Vector3(0,2.05,0),Color.from_string(str(data.get("color","eecf83")),Color.WHITE).lightened(0.25),0.0055)
 	var viewport:=_viewport("Eyes_"+id,EYES_SIZE)
 	viewport.render_target_update_mode=SubViewport.UPDATE_DISABLED
@@ -774,20 +1397,20 @@ func _build_agent(id: String, data: Dictionary) -> void:
 	viewport.add_child(camera); camera.current=true
 	agent_cameras[id]=camera
 	_targets[id]={"position":Vector3.ZERO,"heading":0.0}
-	_animate(id,data,false)
+	_animate(id,data,0.0)
 
 func _fallback_human(parent: Node3D, color: String) -> void:
 	var clothing:=Color.from_string(color,Color("83bfa9"))
 	var torso:=CapsuleMesh.new(); torso.radius=0.24; torso.height=0.72
 	_mesh(parent,torso,Vector3(0,1.0,0),clothing)
-	for side in [-1.0,1.0]:
+	for side: float in [-1.0,1.0]:
 		var limb:=CapsuleMesh.new(); limb.radius=0.085; limb.height=0.7
 		_mesh(parent,limb,Vector3(side*0.13,0.4,0),Color("344551"))
 		_mesh(parent,limb,Vector3(side*0.32,1.02,0),clothing)
 	var head:=SphereMesh.new(); head.radius=0.21; head.height=0.43
 	_mesh(parent,head,Vector3(0,1.57,0),Color("e0bca0"))
 	_box(parent,Vector3(0.4,0.13,0.36),Vector3(0,1.75,0.03),Color("59443b"))
-	for side in [-1.0,1.0]:
+	for side: float in [-1.0,1.0]:
 		_box(parent,Vector3(0.035,0.055,0.02),Vector3(side*0.075,1.59,-0.2),Color("233342"))
 
 func _apply_appearance(id: String, appearance: Dictionary, color: String) -> void:
@@ -799,46 +1422,30 @@ func _apply_appearance(id: String, appearance: Dictionary, color: String) -> voi
 	if _models.has(id) and int(_model_faces.get(id,0))!=face:
 		var replacement: Node3D=_instantiate_asset("human_female" if face else "human_male")
 		if replacement!=null:
-			_models[id].free(); _players.erase(id); _animation_keys.erase(id)
+			_models[id].free(); _players.erase(id); _animation_keys.erase(id); _animation_choices.erase(id); _clip_names.erase(id)
+			_faces.erase(id)
 			pose.add_child(replacement); _models[id]=replacement; _model_faces[id]=face
 			_fit_asset(replacement,Vector3(0.8,1.78,0.55),true); replacement.rotation.y=PI
 			var player:=_find_animation(replacement)
 			if player!=null: _players[id]=player
+			_bind_held_marker(id,pose)
 			_meshes[id]=[]; _collect_meshes(pose,_meshes[id]); _set_body_layer(id,SELECTED_BODY if id==selected_agent else BODIES)
 	var height: float=clampf(float(appearance.get("height",1.0)),0.8,1.25)
 	var build: float=clampf(float(appearance.get("build",1.0)),0.75,1.3)
 	pose.scale=Vector3(build,height,build)
 	var clothing:=Color.from_string(color,Color("83bfa9"))
-	for mesh in _meshes.get(id,[]):
-		var n: String=str(mesh.name).to_lower()
-		if n.begins_with("hair_"):
-			mesh.visible=int(n.trim_prefix("hair_").split(".")[0].split("_")[0])==posmod(int(appearance.get("hair",0)),6)
-			mesh.material_override=_material(Color.from_string(str(appearance.get("hair_color","4e3b32")),Color("4e3b32")))
-		elif mesh.mesh!=null:
-			if n.begins_with("clothing_shirt_"):mesh.visible=int(n.trim_prefix("clothing_shirt_").split(".")[0])==posmod(int(appearance.get("outfit",0)),4)
-			elif n.begins_with("clothing_shoes_"):mesh.visible=int(n.trim_prefix("clothing_shoes_").split(".")[0])==posmod(int(appearance.get("shoes",0)),2)
-			for surface in mesh.mesh.get_surface_count():
-				var original: Material=mesh.mesh.surface_get_material(surface)
-				if original is StandardMaterial3D:
-					var material: StandardMaterial3D=original.duplicate()
-					var material_name: String=material.resource_name.to_lower()
-					if material_name.contains("shirt"):
-						mesh.set_surface_override_material(surface,_outfit_material(clothing,int(appearance.get("outfit",0))));continue
-					elif material_name.contains("hair"):material.albedo_color=Color.from_string(str(appearance.get("hair_color","4e3b32")),Color("4e3b32"))
-					elif material_name.contains("trouser"):
-						material.albedo_color=[Color("3d4c5b"),Color("ad9d7b"),Color("273439"),clothing.darkened(0.4)][posmod(int(appearance.get("outfit",0)),4)]
-					elif material_name.contains("shoe"):material.albedo_color=Color("64554a") if int(appearance.get("shoes",0))%2 else Color("303940")
-					elif material_name.contains("skin") or material_name.contains("superhero") or material_name.contains("basecharacter"):
-						var skin:=Color.from_string(str(appearance.get("skin","dfb89e")),Color("dfb89e"))
-						material.albedo_color=Color(skin.r/0.96,skin.g/0.74,skin.b/0.58,1.0)
-					mesh.set_surface_override_material(surface,material)
-	if _models.has(id):
-		for skeleton in _models[id].find_children("*","Skeleton3D",true,false):
-			var modifier:Node=skeleton.get_node_or_null("FaceShape")
-			if modifier==null:modifier=FaceShape.new();modifier.name="FaceShape";skeleton.add_child(modifier)
-			modifier.variant=posmod(int(int(appearance.get("face",0))/2),3)
+	CharacterFinish.apply(_meshes.get(id, []), appearance, clothing, _outfit_material(clothing, int(appearance.get("outfit", 0))))
+	if _models.has(id) and not _faces.has(id):
+		var modifier := FaceShape.new()
+		modifier.name = "FaceShape"
+		if modifier.bind_model(_models[id], id):
+			_faces[id] = modifier
+		else:
+			modifier.free()
+	if _faces.has(id):
+		_faces[id].set_face_variant(posmod(int(int(appearance.get("face",0))/2),3))
 
-func _apply_pose(id: String, data: Dictionary) -> void:
+func _apply_pose(id: String, data: Dictionary, immediate: bool) -> void:
 	var body: Dictionary=data.get("body",{})
 	var crawl: bool=body.get("left_leg")=="broken" and body.get("right_leg")=="broken"
 	var prone: bool=not bool(data.get("alive",true)) or bool(data.get("sleeping",false)) or bool(data.get("unconscious",false))
@@ -847,61 +1454,239 @@ func _apply_pose(id: String, data: Dictionary) -> void:
 		pose.rotation.x=deg_to_rad(-75) if crawl else 0.0
 		pose.rotation.z=deg_to_rad(88) if prone else 0.0
 		pose.position=Vector3(0,0.25,0.4) if crawl else (Vector3(0,0.27,0) if prone else Vector3.ZERO)
+	elif immediate:
+		var rendered: Dictionary = _state.agents[id]
+		if _seat_motion.has(id) or not rendered.seat.is_empty():
+			_clear_seat_pose(id)
+			_animation_choices.erase(id)
+			_animate(id, rendered, 0.0)
+			_update_seat_pose(id)
+		_update_wardrobe(id)
 
-func _animate(id: String, data: Dictionary, moving: bool) -> void:
-	if not _players.has(id): return
-	var player: AnimationPlayer=_players[id]
-	var keys: Array=["idle"]
-	var body: Dictionary=data.get("body",{})
-	var type: String=str(data.get("busy",{}).get("type",""))
-	if not bool(data.get("alive",true)): keys=["death","dead","die"]
-	elif bool(data.get("sleeping",false)) or bool(data.get("unconscious",false)): keys=["sleep","lying","death"]
-	elif body.get("left_leg")=="broken" and body.get("right_leg")=="broken": keys=["crawl","crouch_fwd","crouch"]
-	elif moving: keys=["limp","walk"] if body.get("left_leg","healthy")!="healthy" or body.get("right_leg","healthy")!="healthy" else ["walk","walking","run"]
-	elif type in ["attack","defend"]: keys=[type,"punch","attack"]
-	elif type in ["consume","eat"]: keys=["eat","interact","idle"]
-	elif type in ["rest","sit"]: keys=["sit","sitting","idle"]
-	elif _action_feedback.has(id) and int(_action_feedback[id].until)>Time.get_ticks_msec():
-		var recent:String=str(_action_feedback[id].type)
-		keys=["idle_talking","talk"] if recent=="speak" else (["pickup","interact"] if recent in ["take","give","drop","request_ration","buy"] else ["interact","idle"])
-	elif not type.is_empty(): keys=[type,"interact","idle"]
-	if _animation_choices.get(id,[])==keys:return
-	_animation_choices[id]=keys
-	var found: String=""
-	for key in keys:
-		for clip in player.get_animation_list():
-			var leaf: String=str(clip).get_slice("/",str(clip).get_slice_count("/")-1).to_lower().trim_suffix("_loop")
-			if leaf==str(key).to_lower().trim_suffix("_loop"):
-				found=str(clip); break
-		if not found.is_empty(): break
-	if found.is_empty():
-		for key in keys:
-			for clip in player.get_animation_list():
-				if str(clip).to_lower().contains(str(key)):
-					found=str(clip); break
-			if not found.is_empty(): break
-	if not found.is_empty() and str(_animation_keys.get(id,""))!=found:
-		var first_animation: bool=not _animation_keys.has(id)
-		_animation_keys[id]=found
-		var clip: Animation=player.get_animation(found)
-		if keys[0] in ["idle","walk","limp","crawl","sit"] or found.to_lower().contains("idle") or found.to_lower().contains("walk") or found.to_lower().contains("crouch"):
-			clip.loop_mode=Animation.LOOP_LINEAR
-		player.play(found,0.0 if first_animation else 0.18)
-		if first_animation:
-			player.advance(0.25 if found.to_lower().contains("idle") else 0.0)
-			for skeleton in _models.get(id,agent_pose_nodes[id]).find_children("*","Skeleton3D",true,false):
-				if skeleton.has_method("force_update_all_bone_transforms"):skeleton.force_update_all_bone_transforms()
+func _update_wardrobe(id: String) -> void:
+	var player: AnimationPlayer = _players.get(id)
+	if is_instance_valid(player):
+		var phase := clampf(player.current_animation_position / maxf(player.current_animation_length, 0.001), 0.0, 1.0)
+		WardrobeDeformation.apply(_models.get(id), str(player.current_animation), phase)
+
+func _clear_seat_pose(id: String) -> void:
+	_seat_motion.erase(id)
+	var pose: Node3D = agent_pose_nodes[id]
+	pose.position = Vector3.ZERO
+	pose.rotation.y = 0.0
+	var solver: Variant = _seat_leg_solvers.get(id)
+	if is_instance_valid(solver):
+		solver.active = false
+		solver.get_parent().get_node("SeatFootLevel").active = false
+		SeatedHandContact.clear(solver)
+
+func _seat_leg_solver(id: String) -> TwoBoneIK3D:
+	var existing: Variant = _seat_leg_solvers.get(id)
+	if is_instance_valid(existing):return existing
+	var model: Node3D = _models[id]
+	var skeletons := model.find_children("*", "Skeleton3D", true, false)
+	if skeletons.is_empty():return null
+	var skeleton := skeletons[0] as Skeleton3D
+	var solver := TwoBoneIK3D.new()
+	solver.name = "SeatFootContact"
+	solver.active = false
+	solver.setting_count = 2
+	skeleton.add_child(solver)
+	for index in range(2):
+		var suffix := "l" if index == 0 else "r"
+		var target := Node3D.new()
+		target.name = "Foot_" + suffix
+		solver.add_child(target)
+		var pole := Node3D.new()
+		pole.name = "Knee_" + suffix
+		solver.add_child(pole)
+		solver.set_root_bone_name(index,"thigh_" + suffix)
+		solver.set_middle_bone_name(index,"calf_" + suffix)
+		solver.set_end_bone_name(index,"foot_" + suffix)
+		solver.set_use_virtual_end(index,false)
+		solver.set_target_node(index,solver.get_path_to(target))
+		solver.set_pole_node(index,solver.get_path_to(pole))
+	var leveling := SeatedFootLevel.new()
+	leveling.name = "SeatFootLevel"
+	leveling.active = false
+	skeleton.add_child(leveling)
+	leveling.bind_model(model)
+	_seat_leg_solvers[id] = solver
+	return solver
+
+func _update_seat_pose(id: String) -> void:
+	if not _seat_motion.has(id):return
+	if not _players.has(id):
+		_clear_seat_pose(id)
+		return
+	var player: AnimationPlayer = _players[id]
+	var clip := str(player.current_animation)
+	var progress := clampf(player.current_animation_position / maxf(player.current_animation_length, .001),0.0,1.0)
+	var amount := 1.0
+	var entering := clip.ends_with("Sitting_Enter")
+	var exiting := clip.ends_with("Sitting_Exit")
+	if entering:
+		amount = smoothstep(.20, .78, progress)
+	elif exiting:
+		amount = 1.0 - smoothstep(.20, .87, progress)
+	elif _animation_choices.get(id, "") != "Sitting_Idle_Loop":
+		_clear_seat_pose(id)
+		return
+	var seat: Dictionary = _seat_motion[id]
+	var body: Node3D = agent_nodes[id]
+	var pose: Node3D = agent_pose_nodes[id]
+	var female := int(_model_faces.get(id,0)) == 1
+	var yaw := deg_to_rad(float(seat.heading))
+	# Measured seated contact points in the two imported rigs at height 1.0.
+	var hip_depth := .354 if female else .357
+	var hips := Vector3(-.003 * pose.scale.x, (.494 if female else .501) * pose.scale.y, hip_depth * pose.scale.z)
+	var cushion := Vector3(seat.position.x, float(seat.height) + .005, seat.position.y)
+	var seated_origin := cushion - Basis(Vector3.UP,yaw) * hips
+	pose.position = body.to_local(seated_origin) * amount
+	pose.rotation.y = wrapf(yaw - body.rotation.y,-PI,PI) * amount
+	var solver := _seat_leg_solver(id)
+	if solver == null:return
+	var leveling := solver.get_parent().get_node("SeatFootLevel")
+	var resident: Dictionary = _state.agents[id]
+	for index in range(2):
+		var suffix := "l" if index == 0 else "r"
+		var foot := solver.get_node("Foot_" + suffix) as Node3D
+		var knee := solver.get_node("Knee_" + suffix) as Node3D
+		var lateral := (-.174 if female else -.178) if index == 0 else (.218 if female else .216)
+		var stance := Vector3(lateral, 0.0, -.044 if female else -.052) * pose.scale
+		var planted := 1.0
+		if entering:
+			planted = smoothstep(.02 + .14 * index, .16 + .14 * index, progress)
+		elif exiting:
+			planted = 1.0 - smoothstep(.70 + .14 * index, .84 + .14 * index, progress)
+		var standing := body.to_global(stance)
+		var seated := seated_origin + Basis(Vector3.UP, yaw) * stance
+		foot.global_position = standing.lerp(seated, planted)
+		foot.global_position.y = SEATED_FLOOR_HEIGHT + leveling.floor_offset(index, resident.shoe_type) + .025 * sin(planted * PI)
+		knee.global_position = pose.to_global(Vector3(lateral,.53,-.39))
+	solver.active = true
+	leveling.active = true
+	SeatedHandContact.update(solver, clip, progress, resident.held_phone, resident.outfit)
+
+func _bind_held_marker(id: String, pose: Node3D) -> void:
+	var previous: Variant = _held_markers.get(id)
+	if is_instance_valid(previous):
+		var parent: Node = previous.get_parent()
+		if parent is BoneAttachment3D:
+			parent.free()
+		else:
+			previous.free()
+	var marker := Marker3D.new()
+	_held_markers[id] = marker
+	var model: Node3D = _models.get(id)
+	if is_instance_valid(model):
+		for node in model.find_children("*", "Skeleton3D", true, false):
+			var skeleton := node as Skeleton3D
+			var hand := skeleton.find_bone("hand_r")
+			if hand < 0:
+				continue
+			var attachment := BoneAttachment3D.new()
+			attachment.name = "RightGrip"
+			attachment.bone_name = skeleton.get_bone_name(hand)
+			skeleton.add_child(attachment)
+			marker.position = Vector3(0.0, 0.046, 0.025)
+			attachment.add_child(marker)
+			skeleton.skeleton_updated.connect(_update_seated_phone.bind(id))
+			return
+	marker.position = Vector3(0.30, 1.04, -0.20)
+	pose.add_child(marker)
+
+func _animate(id: String, data: Dictionary, speed: float) -> void:
+	if not _players.has(id):
+		return
+	var player: AnimationPlayer = _players[id]
+	var body: Dictionary = data.get("body", {})
+	var action := str(data.get("busy", {}).get("type", ""))
+	var previous := str(_animation_choices.get(id, ""))
+	var moving := speed > (0.065 if previous in ["Walk_Loop", "Crawl_Loop"] else 0.14)
+	var seat: Dictionary = data.get("seat", {})
+	var clip_name := "Idle_Loop"
+	var speed_scale := 1.0
+	if not bool(data.get("alive", true)):
+		clip_name = "Death01"
+	elif not str(data.get("carried_by", "")).is_empty() or bool(data.get("sleeping", false)) or bool(data.get("unconscious", false)):
+		clip_name = "Sleep_Loop"
+	elif body.get("left_leg") == "broken" and body.get("right_leg") == "broken":
+		clip_name = "Crawl_Loop" if moving else "Crouch_Idle_Loop"
+		speed_scale = clampf(speed / 0.72, 0.5, 1.6) if moving else 1.0
+	elif not seat.is_empty():
+		clip_name = "Sitting_Idle_Loop"
+	elif moving:
+		clip_name = "Walk_Loop"
+		var injured: bool = body.get("left_leg", "healthy") != "healthy" or body.get("right_leg", "healthy") != "healthy"
+		speed_scale = clampf(speed / (1.10 if injured else 1.52), 0.45, 1.85)
+	elif action == "attack":
+		clip_name = "Punch_Jab"
+	elif action == "defend":
+		clip_name = "Crouch_Idle_Loop"
+	elif action == "rest":
+		clip_name = "Idle_Loop"
+	elif action == "treat":
+		clip_name = "Fixing_Kneeling"
+	elif action == "consume":
+		clip_name = "Interact"
+	elif _action_feedback.has(id) and int(_action_feedback[id].until) > Time.get_ticks_msec():
+		match str(_action_feedback[id].type):
+			"speak": clip_name = "Idle_Talking_Loop"
+			"take", "give", "drop", "request_ration", "buy": clip_name = "PickUp_Table"
+			_: clip_name = "Interact"
+	if not _clip_names.has(id):
+		var clips := {}
+		for name in player.get_animation_list():
+			clips[str(name).get_slice("/", str(name).get_slice_count("/") - 1)] = name
+		_clip_names[id] = clips
+	var clips: Dictionary = _clip_names[id]
+	# The GLTF importer uses _Loop as an import hint and can remove it from the name.
+	var clip: StringName = clips.get(clip_name, clips.get(clip_name.trim_suffix("_Loop"), clips.get("Idle", &"")))
+	if clip.is_empty():
+		return
+	player.speed_scale = speed_scale
+	if clip_name == "Sitting_Idle_Loop":
+		_seat_motion[id] = seat
+	if previous == clip_name:
+		return
+	_animation_choices[id] = clip_name
+	_animation_keys[id] = clip
+	var seated_exit: StringName = clips.get("Sitting_Exit", &"")
+	var can_stand := clip_name not in ["Sleep_Loop", "Death01", "Crawl_Loop", "Crouch_Idle_Loop"]
+	player.clear_queue()
+	if not seated_exit.is_empty() and player.current_animation == seated_exit and can_stand and seat.is_empty():
+		# A speech or movement cue can change the destination while the
+		# resident is still rising. Keep the seat contacts through the exit.
+		player.queue(clip)
+		return
+	var initial := previous.is_empty()
+	if clip_name == "Sitting_Idle_Loop" and not initial and clips.has("Sitting_Enter"):
+		player.play(clips["Sitting_Enter"], .12)
+		player.queue(clip)
+	elif previous == "Sitting_Idle_Loop" and can_stand and not seated_exit.is_empty():
+		player.play(seated_exit, .10)
+		player.queue(clip)
+	else:
+		player.play(clip, 0.0 if initial else 0.17)
+	if initial:
+		player.advance(0.15 if clip_name == "Idle_Loop" else 0.0)
 
 func _sync_camera(id: String, authoritative: bool) -> void:
 	if not agent_cameras.has(id) or not _state.get("agents",{}).has(id): return
 	var data: Dictionary=_state.agents[id]
+	var camera: Camera3D=agent_cameras[id]
+	var seat: Dictionary = data.get("seat", {})
+	if not seat.is_empty():
+		camera.position = _displayed_eye_position(id)
+		camera.rotation = Vector3(deg_to_rad(-24),deg_to_rad(float(seat.heading)),0)
+		return
 	var point: Vector3=_targets.get(id,{}).get("position",Vector3.ZERO) if authoritative else agent_nodes[id].position
 	var heading: float=float(_targets.get(id,{}).get("heading",0.0)) if authoritative else agent_nodes[id].rotation.y
 	var body: Dictionary=data.get("body",{})
 	var height: float=1.57*float(data.get("appearance",{}).get("height",1.0))
 	if body.get("left_leg")=="broken" and body.get("right_leg")=="broken": height=0.48
 	if bool(data.get("sleeping",false)) or not bool(data.get("alive",true)) or bool(data.get("unconscious",false)): height=0.35
-	var camera: Camera3D=agent_cameras[id]
 	camera.position=point+Vector3(0,height,0)
 	# Keep floor objects within sight at the 1.05 m navigation approach point,
 	# including tall avatars; otherwise food disappears below the image exactly
@@ -909,12 +1694,16 @@ func _sync_camera(id: String, authoritative: bool) -> void:
 	camera.rotation=Vector3(deg_to_rad(-24),heading,0)
 
 func _set_body_layer(id: String, layer: int) -> void:
-	for mesh in _meshes.get(id,[]): mesh.layers=layer
+	var visual_layer:=_resident_layers(id,layer)
+	for mesh in _meshes.get(id,[]): mesh.layers=visual_layer
 	# Held meshes follow the holder's visibility in EVERY eye camera, including
 	# one-shot captures of an actor who is not selected by the observer.
 	for item_id in _state.get("items",{}):
-		if str(_state.items[item_id].get("holder",""))==id and item_nodes.has(item_id):
-			_set_item_layers(item_nodes[item_id],layer)
+		if str(_state.items[item_id])==id and item_nodes.has(item_id):
+			_set_item_layers(item_nodes[item_id],visual_layer)
+
+func _resident_layers(id: String, layer: int) -> int:
+	return layer if _use_proxies and id!=selected_agent and not _near_observer.has(id) else layer|DISPLAY_BODY
 
 func _build_item(id: String, data: Dictionary) -> void:
 	var root:=Node3D.new(); root.name="Item_"+id
@@ -925,8 +1714,8 @@ func _build_item(id: String, data: Dictionary) -> void:
 		root.add_child(asset); _fit_asset(asset,Vector3(0.32,0.28,0.25)); return
 	match kind:
 		"phone":
-			_box(root,Vector3(0.13,0.025,0.24),Vector3(0,0.035,0),Color("354954"))
-			_box(root,Vector3(0.11,0.004,0.19),Vector3(0,0.051,0),Color("8bcac2"))
+			_box(root, Vector3(0.076, 0.012, 0.155), Vector3(0, 0.011, 0), Color("354954"))
+			_box(root, Vector3(0.069, 0.002, 0.139), Vector3(0, 0.018, 0), Color("547d7b"))
 		"knife":
 			_box(root,Vector3(0.045,0.035,0.13),Vector3(0,0.04,0.09),Color("6b4d3c"))
 			_box(root,Vector3(0.055,0.012,0.25),Vector3(0,0.04,-0.08),Color("c4d3d6"))
@@ -952,29 +1741,47 @@ func _sync_item(id: String, item: Dictionary) -> void:
 	var node: Node3D=item_nodes[id]
 	var holder: String=str(item.get("holder",""))
 	var container: String=str(item.get("container",""))
-	var container_visible: bool=container.is_empty()
-	if not container.is_empty() and container not in ["terminal","shop"]:
-		for prop in _state.get("geometry",{}).get("props",[]):
-			if str(prop.get("id",""))==container:container_visible=bool(prop.get("storage",false)) and bool(prop.get("open",false)) and not bool(prop.get("locked",false));break
+	var container_visible := container.is_empty() or _open_containers.has(container)
 	node.visible=int(item.get("quantity",1))>0 and container_visible
 	if not holder.is_empty() and _held_markers.has(holder):
 		var inventory: Array=_state.agents.get(holder,{}).get("inventory",[])
 		node.visible=not inventory.is_empty() and str(inventory[0])==id
-		node.global_position=_held_markers[holder].global_position
-		node.global_rotation=agent_nodes[holder].global_rotation
-		_set_item_layers(node, SELECTED_BODY if holder==selected_agent else (CAPTURE_BODY if holder==_capture_actor else BODIES))
+		_set_held_pose(node, holder)
+		var resident_layer:=SELECTED_BODY if holder==selected_agent else (CAPTURE_BODY if holder==_capture_actor else BODIES)
+		_set_item_layers(node,_resident_layers(holder,resident_layer))
 	else:
 		var p: Array=item.get("position",[0,0])
 		node.position=Vector3(float(p[0]),float(item.get("surface_height",0)),float(p[1]))
 		node.rotation=Vector3.ZERO
 		_set_item_layers(node,WORLD)
 
+func _set_held_pose(item: Node3D, holder: String) -> void:
+	var marker: Marker3D = _held_markers[holder]
+	if _seat_motion.has(holder) and _state.agents.get(holder, {}).get("held_phone", false):
+		var grip := SeatedHandContact.phone_transform(marker)
+		item.global_transform = Transform3D(grip.basis.orthonormalized(), grip.origin)
+	else:
+		item.global_position = marker.global_position
+		item.global_rotation = agent_nodes[holder].global_rotation
+
+func _update_seated_phone(holder: String) -> void:
+	if not _seat_motion.has(holder):
+		return
+	var resident: Dictionary = _state.agents.get(holder, {})
+	if not resident.get("held_phone", false):
+		return
+	var item: Node3D = item_nodes.get(resident.inventory[0])
+	if is_instance_valid(item):
+		_set_held_pose(item, holder)
+
 func _set_item_layers(node: Node, layer: int) -> void:
 	if node is VisualInstance3D: node.layers=layer
 	for child in node.get_children(): _set_item_layers(child,layer)
 
 func _update_selection() -> void:
-	if is_instance_valid(_selection) and agent_nodes.has(selected_agent): _selection.position=agent_nodes[selected_agent].position+Vector3(0,0.06,0)
+	if is_instance_valid(_selection) and agent_nodes.has(selected_agent):
+		_selection.position = agent_nodes[selected_agent].position + Vector3.UP * 0.062
+		_selection.visible = not first_person and _zoom < 44.0
 
 func _viewport(label: String, size: Vector2i) -> SubViewport:
 	var viewport:=SubViewport.new(); viewport.name=label; viewport.size=size
@@ -1048,9 +1855,10 @@ func _collect_meshes(node: Node, result: Array) -> void:
 	for child in node.get_children(): _collect_meshes(child,result)
 
 func _surface_material(kind: String, tint: Color, repeats: float=1.0) -> StandardMaterial3D:
-	var cache_key:=kind+"/"+tint.to_html()
+	var cache_key:=kind+"/"+tint.to_html()+"/"+str(repeats)
 	if _material_cache.has(cache_key):return _material_cache[cache_key]
-	var material:=StandardMaterial3D.new();material.albedo_color=tint;material.roughness=.84
+	var material:=StandardMaterial3D.new();material.albedo_color=tint.darkened(.16) if kind=="tile" else tint;material.roughness=.84
+	material.metallic_specular=0.20 if kind=="tile" else 0.33
 	_material_cache[cache_key]=material
 	var textures: Dictionary=_manifest.get("textures",{})
 	var info: Variant=textures.get(kind,{})
@@ -1061,11 +1869,12 @@ func _surface_material(kind: String, tint: Color, repeats: float=1.0) -> Standar
 			if not path.is_empty() and ResourceLoader.exists(path):
 				if not _texture_cache.has(path): _texture_cache[path]=load(path)
 				if field=="albedo": material.albedo_texture=_texture_cache[path]
-				elif field=="normal": material.normal_enabled=true; material.normal_texture=_texture_cache[path]; material.normal_scale=0.45
+				elif field=="normal": material.normal_enabled=true; material.normal_texture=_texture_cache[path]; material.normal_scale=0.26
 				elif field=="roughness": material.roughness_texture=_texture_cache[path]
 	material.uv1_triplanar=true
-	material.uv1_scale=Vector3.ONE*.25
-	material.texture_filter=BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	material.uv1_world_triplanar=true
+	material.uv1_scale=Vector3.ONE*(0.32*repeats)
+	material.texture_filter=BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	return material
 
 func _material(color: Color) -> StandardMaterial3D:
@@ -1076,19 +1885,13 @@ func _material(color: Color) -> StandardMaterial3D:
 	return material
 
 func _outfit_material(color: Color, outfit: int) -> ShaderMaterial:
-	var material:=ShaderMaterial.new();material.shader=OutfitShader
-	material.set_shader_parameter("cloth_color",color)
-	material.set_shader_parameter("accent_color",Color("e7dfc8"))
-	material.set_shader_parameter("outfit",0)
-	for pair in [["fabric_map","res://assets/release/textures/fabric_color.png"],["normal_map","res://assets/release/textures/fabric_normal.png"]]:
-		if ResourceLoader.exists(pair[1]):
-			if not _texture_cache.has(pair[1]):_texture_cache[pair[1]]=load(pair[1])
-			material.set_shader_parameter(pair[0],_texture_cache[pair[1]])
-	return material
+	return Art.clothing_material(color,outfit)
 
 func _box(parent: Node3D, size: Vector3, point: Vector3, color: Color, layer: int=WORLD) -> MeshInstance3D:
-	var box:=BoxMesh.new(); box.size=size
-	return _mesh(parent,box,point,color,layer)
+	if not _box_meshes.has(size):
+		var box:=BoxMesh.new();box.size=size
+		_box_meshes[size]=box
+	return _mesh(parent,_box_meshes[size],point,color,layer)
 
 func _mesh(parent: Node3D, mesh: Mesh, point: Vector3, color: Color, layer: int=WORLD) -> MeshInstance3D:
 	var node:=MeshInstance3D.new(); node.mesh=mesh; node.position=point; node.layers=layer; node.material_override=_material(color)
@@ -1097,30 +1900,149 @@ func _mesh(parent: Node3D, mesh: Mesh, point: Vector3, color: Color, layer: int=
 func _label(parent: Node3D, text: String, point: Vector3, color: Color, pixel: float=0.005, floor_label: bool=false) -> void:
 	var label:=Label3D.new(); label.text=text; label.position=point; label.font_size=36; label.pixel_size=pixel; label.modulate=color; label.outline_modulate=Color("23313c"); label.layers=OVERLAY
 	if floor_label: label.rotation_degrees.x=-90
-	else: label.billboard=BaseMaterial3D.BILLBOARD_ENABLED; label.no_depth_test=true
+	else:
+		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		label.font_size = 32
+		label.outline_size = 3
 	parent.add_child(label)
 	_labels.append({"node":label,"kind":"room" if floor_label else "actor","actor":str(parent.name).trim_prefix("Agent_")})
 
 func _update_labels() -> void:
-	if not is_instance_valid(observer_camera):return
-	var occupied:Array=[]
-	var sorted:Array=_labels.duplicate()
-	sorted.sort_custom(func(a,b):return a.get("actor","")==selected_agent and b.get("actor","")!=selected_agent)
-	for entry in sorted:
-		var label:Label3D=entry.node
-		if not is_instance_valid(label):continue
-		label.visible=not first_person and (_zoom>=25.0 if entry.kind=="room" else _zoom<=28.0)
-		if not label.visible or entry.kind=="room":continue
-		label.pixel_size=0.008;label.font_size=32
-		if observer_camera.is_position_behind(label.global_position):label.visible=false;continue
-		var point:Vector2=observer_camera.unproject_position(label.global_position)
-		var rect:=Rect2(point-Vector2(48,10),Vector2(96,22))
-		for used in occupied:
-			if rect.intersects(used):label.visible=false;break
-		if label.visible:occupied.append(rect)
-	for id in _speech_bubbles:
-		var bubble:Label3D=_speech_bubbles[id]
-		bubble.visible=not first_person and _zoom<22.0 and _action_feedback.has(id) and int(_action_feedback[id].until)>Time.get_ticks_msec() and str(_action_feedback[id].type)=="speak"
+	if not is_instance_valid(observer_camera):
+		return
+	var occupied: Array[Rect2] = []
+	var selected: Label3D = null
+	for entry in _labels:
+		var label: Label3D = entry.node
+		label.visible = false
+		if entry.kind == "actor" and entry.actor == selected_agent:
+			selected = label
+	for bubble in _speech_bubbles.values():
+		bubble.visible = false
+	if first_person:
+		return
+	var viewport_pixels := Vector2(observer_viewport.size)
+	var scale := 1080.0 / viewport_pixels.y
+	var screen := Rect2(Vector2.ZERO, viewport_pixels * scale)
+	if is_instance_valid(selected) and _zoom < 44.0:
+		_place_label(selected, scale, screen, Vector2(90, 22), occupied, 20.0)
+	var chosen_bubble: Label3D = null
+	var nearest := INF
+	if _zoom < 25.0:
+		var now := Time.get_ticks_msec()
+		for id in _speech_bubbles:
+			var feedback: Dictionary = _action_feedback.get(id, {})
+			if str(feedback.get("type", "")) != "speak" or int(feedback.get("until", 0)) <= now:
+				continue
+			var bubble: Label3D = _speech_bubbles[id]
+			var distance := 0.0 if id == selected_agent else bubble.global_position.distance_squared_to(_focus)
+			if distance < nearest and screen.has_point(observer_camera.unproject_position(bubble.global_position) * scale):
+				nearest = distance
+				chosen_bubble = bubble
+	if is_instance_valid(chosen_bubble):
+		_place_label(chosen_bubble, scale, screen, Vector2(288, 40), occupied, 18.0)
+	for entry in _labels:
+		var label: Label3D = entry.node
+		if entry.kind == "room" and _zoom >= 28.0:
+			_place_label(label, scale, screen, Vector2(122, 21), occupied)
+		elif entry.kind == "actor" and label != selected and _zoom < 25.0:
+			_place_label(label, scale, screen, Vector2(75, 19), occupied, 17.0)
+
+func _place_label(label: Label3D, scale: float, screen: Rect2, size: Vector2, occupied: Array[Rect2], height: float = 0.0) -> void:
+	if observer_camera.is_position_behind(label.global_position):
+		return
+	var point := observer_camera.unproject_position(label.global_position) * scale
+	var bounds := Rect2(point - size * 0.5, size)
+	if not screen.encloses(bounds):
+		return
+	for used in occupied:
+		if used.intersects(bounds):
+			return
+	if height > 0.0:
+		var view_height := _zoom
+		if _perspective:
+			var depth := -observer_camera.to_local(label.global_position).z
+			view_height = 2.0 * depth * tan(deg_to_rad(observer_camera.fov * 0.5))
+		label.pixel_size = view_height * height / (1080.0 * label.font_size)
+	occupied.append(bounds)
+	label.visible = true
+
+func _sync_face_context(state: Dictionary, immediate: bool) -> void:
+	var minute := float(state.get("minute", 0.0))
+	if immediate or not is_equal_approx(_face_minute, minute):
+		_face_minute = minute
+		_face_clock = minute * FaceShape.SECONDS_PER_MINUTE
+		_face_clock_limit = _face_clock + (0.0 if immediate else 0.099)
+	var speech: Dictionary = {}
+	var looking_at: Dictionary = {}
+	var hearing: Dictionary = {}
+	var events: Array = state.get("events", [])
+	for index in range(events.size() - 1, -1, -1):
+		var event: Dictionary = events[index]
+		if minute - float(event.get("minute", 0.0)) > FaceShape.SPEECH_WINDOW:
+			break
+		if event.get("type") != "speak" or not event.get("ok", false):
+			continue
+		var speaker := str(event.get("actor", ""))
+		if not _targets.has(speaker) or speech.has(speaker):
+			continue
+		speech[speaker] = event
+		var listeners: Variant = event.get("details", {}).get("listeners", [])
+		if not listeners is Array:
+			continue
+		var closest := INF
+		var source_position: Vector3 = _targets[speaker].position
+		for id in listeners:
+			if not _targets.has(id):
+				continue
+			if not hearing.has(id):
+				hearing[id] = speaker
+			var destination: Vector3 = _targets[id].position
+			var distance := source_position.distance_squared_to(destination)
+			if distance < closest and absf(_relative_facing(speaker, id)) < 1.15:
+				looking_at[speaker] = id
+				closest = distance
+	for id in _faces:
+		if not state.agents.has(id):
+			continue
+		var resident: Dictionary = state.agents[id]
+		var event: Dictionary = speech.get(id, {})
+		var listener := str(looking_at.get(id, hearing.get(id, "")))
+		var gaze := Vector2.ZERO
+		if _targets.has(listener):
+			var yaw := _relative_facing(id, listener)
+			if absf(yaw) < 1.15:
+				var offset := _displayed_eye_position(listener) - _displayed_eye_position(id)
+				gaze = Vector2(yaw, -atan2(offset.y, Vector2(offset.x, offset.z).length()))
+		var stress := maxf(0.0, float(resident.get("pain", 0.0)) - 10.0) * 0.007
+		var line := _speech_line(event, resident) if not event.is_empty() else ""
+		_faces[id].set_context(int(event.get("seq", -1)), line, float(event.get("minute", 0.0)), hearing.has(id), gaze, stress)
+		_present_face(id, immediate)
+
+func _relative_facing(id: String, target: String) -> float:
+	var offset: Vector3 = _targets[target].position - _targets[id].position
+	return angle_difference(float(_targets[id].heading), atan2(-offset.x, -offset.z))
+
+func _displayed_eye_position(id: String) -> Vector3:
+	var data: Dictionary = _state.agents[id]
+	var height := float(data.appearance.height)
+	var seat: Dictionary = data.seat
+	if not seat.is_empty():
+		return Vector3(seat.position.x, float(seat.height) + SEATED_EYE_RISE * height, seat.position.y)
+	return _targets[id].position + Vector3.UP * 1.57 * height
+
+func _present_face(id: String, immediate: bool = false) -> void:
+	if not _faces.has(id):
+		return
+	var data: Dictionary = _state.agents[id]
+	_faces[id].present(_face_clock, data.alive and not data.sleeping and not data.unconscious, immediate)
+
+func _speech_line(event: Dictionary, resident: Dictionary) -> String:
+	var recorded: Variant = event.get("details", {}).get("text")
+	if recorded is String:
+		return recorded
+	var last: Dictionary = resident.get("last_action", {})
+	return str(last.get("text", "")) if last.get("type") == "speak" else ""
 
 func _sync_action_feedback(state:Dictionary) -> void:
 	var fresh:Array=[]
@@ -1131,6 +2053,7 @@ func _sync_action_feedback(state:Dictionary) -> void:
 		fresh.push_front(event)
 	for event in fresh:
 		_visual_event_cursor=maxi(_visual_event_cursor,int(event.get("seq",-1)))
+		if float(state.get("minute",0.0))-float(event.get("minute",0.0))>0.45:continue
 		var id:=str(event.get("actor",""))
 		if not bool(event.get("ok",false)) or not agent_nodes.has(id):continue
 		var kind:=str(event.get("type",""))
@@ -1138,8 +2061,9 @@ func _sync_action_feedback(state:Dictionary) -> void:
 		_action_feedback[id]={"type":kind,"until":Time.get_ticks_msec()+(4000 if kind=="speak" else 1800)}
 		if kind=="speak":
 			if not _speech_bubbles.has(id):
-				var bubble:=Label3D.new();bubble.layers=OVERLAY;bubble.position=Vector3(0,2.55,0);bubble.font_size=24;bubble.pixel_size=0.007
-				bubble.billboard=BaseMaterial3D.BILLBOARD_ENABLED;bubble.no_depth_test=true;bubble.modulate=Color("fff4d6");bubble.outline_size=8;bubble.outline_modulate=Color("182d36")
+				var bubble:=Label3D.new();bubble.layers=OVERLAY;bubble.position=Vector3(0,2.48,0);bubble.font_size=24
+				bubble.billboard=BaseMaterial3D.BILLBOARD_ENABLED;bubble.modulate=Color("fff4d6");bubble.outline_size=4;bubble.outline_modulate=Color("182d36")
+				bubble.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;bubble.width=340
 				agent_nodes[id].add_child(bubble);_speech_bubbles[id]=bubble
-			var text:=str(state.agents[id].get("last_action",{}).get("text",event.get("message","")))
+			var text := _speech_line(event, state.agents[id])
 			_speech_bubbles[id].text=text.left(58)+("…" if text.length()>58 else "")

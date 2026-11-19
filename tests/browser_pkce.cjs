@@ -4,6 +4,7 @@
 const assert = require('node:assert/strict');
 const {createHash, randomUUID} = require('node:crypto');
 const {chromium} = require(process.env.PW_CORE || 'playwright-core');
+const {clickPrimary, chooseStory, ui} = require('./browser_story_controls.cjs');
 
 async function run() {
   const base = process.env.BETA_URL || 'http://127.0.0.1:8732/';
@@ -78,11 +79,11 @@ async function run() {
     assert.equal(new URL(page.url()).search, '');
     assert.equal(await page.evaluate(()=>sessionStorage.getItem('aisims-pkce')), null);
     assert.equal(await page.evaluate(()=>JSON.parse(AISimsWeb.getStatus()).connected), true);
-    await page.mouse.click(720,850);await page.waitForTimeout(500);await page.mouse.click(720,611);
-    await page.waitForTimeout(1600);
-    await page.mouse.click(720,699); // Start observing this chapter using the actual transport.
-    await page.mouse.click(85,815); // Pause before exercising one full scheduler step.
-    await page.mouse.click(196,815);
+    await chooseStory(page, 'residence');
+    await clickPrimary(page, 'Begin story');
+    await clickPrimary(page, 'Start observing');
+    await page.mouse.click(...ui.pause); // Pause before exercising one full scheduler step.
+    await page.mouse.click(...ui.step);
     await page.waitForFunction(()=>{
       const ledger=JSON.parse(AISimsWeb.getLedger());
       const entries=Object.values(ledger.entries || {});

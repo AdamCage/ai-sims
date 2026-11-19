@@ -17,7 +17,9 @@ def inventory():
              "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
              "bytes": path.stat().st_size}
             for path in sorted(BASE.rglob("*"))
-            if path.is_file() and path.suffix.lower() in {".glb", ".png", ".wav"}]
+            if path.is_file() and path.suffix.lower() in {
+                ".glb", ".png", ".jpg", ".webp", ".exr", ".hdr", ".wav", ".ttf", ".otf"
+            }]
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

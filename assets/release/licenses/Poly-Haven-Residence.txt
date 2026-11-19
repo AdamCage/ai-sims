@@ -1,0 +1,30 @@
+AI Sims Residence assets from Poly Haven
+License: CC0 1.0 Universal
+https://polyhaven.com/license
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Materials (1K base colors and OpenGL normal maps; paving includes roughness)
+  Cobblestone 03, Charlotte Baglioni — https://polyhaven.com/a/cobblestone_03
+    Local files: stone_setts_*.png
+  White Stucco, Amal Kumar — https://polyhaven.com/a/white_stucco
+    Local files: lime_stucco_*.png
+  Mixed Brick Wall, Dimitrios Savva — https://polyhaven.com/a/mixed_brick_wall
+    Local files: brown_brick_*.png
+  Oak Wood Planks, Dimitrios Savva — https://polyhaven.com/a/oak_wood_planks
+    Local files: oak_planks_*.png
+
+Models and foliage
+  Painted Wooden Bench, Kirill Sannikov — https://polyhaven.com/a/painted_wooden_bench
+  Potted Plant 01, Rico Cilliers — https://polyhaven.com/a/potted_plant_01
+  Dining Table, Aron Łyczek — https://polyhaven.com/a/dining_table
+  Mid Century Lounge Chair, Kuutti Siitonen — https://polyhaven.com/a/mid_century_lounge_chair
+  Wooden Display Shelves 01, James Ray Cock — https://polyhaven.com/a/wooden_display_shelves_01
+  Tree Small 02, Rico Cilliers — https://polyhaven.com/a/tree_small_02
+    Local file: linden_leaf_cards.png (cropped 256px diffuse and alpha atlas)
+
+The glTF model resources were repacked as single GLB containers. Dining
+table, lounge chair, bench and potted-plant textures were resized to at
+most 512 pixels per side for the game camera. The potted plant meshes
+were simplified in Blender from 176,226 to 26,763 triangles, preserving
+the original material assignments. Architecture, fixtures and tree
+mesh arrangements are original AI Sims artwork.

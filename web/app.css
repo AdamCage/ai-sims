@@ -1,14 +1,193 @@
-:root{color-scheme:dark;font-family:Inter,"Segoe UI",sans-serif;background:#10202b;color:#edf3f4}*{box-sizing:border-box}body{margin:0;overflow:hidden}button,a{font:inherit}button{border:1px solid #49616c;border-radius:7px;background:#203743;color:#edf3f4;padding:7px 12px;cursor:pointer}button:hover{background:#365260}button:focus-visible{outline:2px solid #eebd7a;outline-offset:3px}button[hidden],[hidden]{display:none!important}#toolbar{height:46px;display:flex;align-items:center;gap:20px;padding:0 16px;background:#142a36;border-bottom:1px solid #39515c}.brand{text-decoration:none;color:#eef4f4;font-size:13px;font-weight:800;letter-spacing:2px}.brand span{font-size:9px;letter-spacing:1px;color:#e6b571}#storage-status{font-size:11px;color:#a5bec5;flex:1}nav{display:flex;gap:7px}nav button{font-size:11px;padding:6px 10px}main{position:relative;width:100vw;height:100dvh}body:has(#toolbar:not([hidden])) main{height:calc(100dvh - 46px)}canvas{display:block;width:100%;height:100%;outline:none}#boot{position:absolute;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse at 72% 34%,#35637170,transparent 60%),linear-gradient(125deg,#102431,#233f49)}.boot-card{max-width:680px;width:90%;padding:48px}.eyebrow{font-size:11px;letter-spacing:3px;color:#ecc58b}h1{font-size:clamp(38px,5vw,66px);line-height:1.08;font-weight:600;letter-spacing:-2px;margin:24px 0}p{font-size:16px;line-height:1.7;color:#c5d6d9}progress{width:100%;height:6px;accent-color:#eac38a;margin:28px 0 0}#boot-message{font-size:12px;color:#eac38a}small{display:block;margin-top:32px;font-size:11px;line-height:1.8;color:#91abb4}@media(max-width:900px){#storage-status{display:none}#toolbar{gap:10px}nav{margin-left:auto}nav button{font-size:10px;padding:5px 8px}}@media(prefers-reduced-motion:no-preference){.boot-card{animation:arrive .5s ease-out}@keyframes arrive{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}}
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  background: #101713;
+  color: #f3ead8;
+  --surface: #17201d;
+  --raised: #222e29;
+  --border: #3b4b42;
+  --text: #f3ead8;
+  --muted: #adb7a7;
+  --accent: #e4b775;
+}
 
-#playtest{width:min(590px,95vw);max-height:90dvh;overflow:auto;background:#182d38;color:#f1f1eb;border:1px solid #52646d;border-radius:12px;padding:24px}
-#playtest::backdrop{background:#07131cc9}
-#game-picture{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-#playtest header,#playtest footer{display:flex;align-items:center;justify-content:space-between;gap:12px}
-#playtest h2{margin:0;font-size:24px}
-#playtest p{font-size:14px;line-height:1.5}
-#playtest label{display:grid;gap:6px;font-size:14px;margin:16px 0}
-#playtest textarea{resize:vertical;padding:8px;background:#10232e;color:#f1f1eb;border:1px solid #617681;border-radius:4px;font:inherit}
-#playtest footer [role=status]{font-size:13px;color:#eac38a}
-#playtest button[type=submit]{background:#dbbb86;color:#172a33}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
-.boot-card small a{color:inherit}
+body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+  margin: 0;
+  overflow: hidden;
+}
+
+button {
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover { background: #303e35; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#toolbar {
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 2vw, 24px);
+  height: 46px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.brand {
+  color: var(--accent);
+  font: 700 17px Georgia, serif;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+#storage-status {
+  flex: 1;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#toolbar nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#toolbar button {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+#toolbar #fullscreen { min-width: 32px; }
+
+main {
+  position: relative;
+  grid-row: 2;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#canvas:focus-visible { outline-offset: -2px; }
+
+#game-picture {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+#boot {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(ellipse at 55% 38%, #26352a, #101713 68%);
+}
+
+.boot-card {
+  width: min(100%, 460px);
+  padding: clamp(24px, 6vw, 48px);
+  border: 1px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.boot-card h1 {
+  margin: 0 0 28px;
+  color: var(--text);
+  font: 500 clamp(36px, 5vw, 58px) / 1 Georgia, serif;
+}
+
+#boot-progress {
+  display: block;
+  width: 100%;
+  height: 6px;
+  accent-color: var(--accent);
+}
+
+#boot-message { color: var(--accent); }
+
+.boot-card small {
+  display: block;
+  margin-top: 24px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.boot-card small a { color: inherit; }
+
+#playtest {
+  width: min(590px, 95vw);
+  max-height: 90dvh;
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+#playtest::backdrop { background: #101713df; }
+
+#playtest header,
+#playtest footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#playtest h2 { margin: 0; font-size: 24px; }
+#playtest p { color: var(--muted); font-size: 14px; line-height: 1.5; }
+#playtest label { display: grid; gap: 6px; margin: 16px 0; font-size: 14px; }
+
+#playtest textarea {
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #101713;
+  color: var(--text);
+  font: inherit;
+}
+
+#playtest footer [role=status] { color: var(--accent); font-size: 13px; }
+#playtest button[type=submit] { background: var(--accent); color: #1a1e15; }
+#playtest button[type=submit]:hover { background: #f2c98d; }
+
+@media (max-width: 740px) {
+  #toolbar { padding: 0 8px; }
+  #toolbar nav { min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+  #toolbar button { padding-inline: 7px; }
+}
